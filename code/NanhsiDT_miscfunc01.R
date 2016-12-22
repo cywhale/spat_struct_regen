@@ -19,9 +19,8 @@
 #' sciname_simplify(c("Aricidea sp. A", "Armandia cf. leptocirrus","Thalenessa spinosa asitica","Ablennes hians (Valenciennes; 1843)"), simplify_two=TRUE, trim.spp_abbrev=TRUE)
 #' > [1] "Aricidea" "Armandia leptocirrus" "Thalenessa spinosa" "Ablennes hians"
 #' rdname sciname_simplify
-#' export
-sciname_simplify <- function (x,
-                              trim.cf_sp = TRUE,
+#  export
+sciname_simplify <- function (x, trim.cf_sp = TRUE,
                               pattern.var_sp = "var.", trim.var_sp = FALSE,
                               trim.auther_year_in_bracket = TRUE,
                               trim.dummy_num = TRUE,
