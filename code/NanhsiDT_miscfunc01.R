@@ -6,20 +6,20 @@
 ############ 20160623 add : handle (cf. : confer speceies) and merged into odbapi.R
 #' Parse scientific names to simplified form
 #'
-#' @param x A character vector of scentific names
-#' @param trim.cf_sp A boolean value to trim "cf." in scientific names which means confer species (default) or not
-#' @param pattern.var_sp A character string indicates abbreviation of variety of species, like "var."(default).
-#' @param trim.var_sp A boolean value to trim "var." and following words (usually means variety) in scientific names (see pattern.var_sp) or not (default).
-#' @param trim.auther_year_in_bracket A boolean value to trim strings in bracket (default, usually means authors and year) or not.
-#' @param trim.dummy_num A boolean value to trim leading or trailing non-alphabet symbols/numbers (default) or not.
-#' @param simplify_two A boolean value to trim scientific names to (maximum) two words only or not (default).
-#' @param trim.spp_abbrev A boolean value to trim trailing "spp."/"sp." or not (default).
-#' @return A charcter vector of simplified scientific names
-#' @examples
+#' param x A character vector of scentific names
+#' param trim.cf_sp A boolean value to trim "cf." in scientific names which means confer species (default) or not
+#' param pattern.var_sp A character string indicates abbreviation of variety of species, like "var."(default).
+#' param trim.var_sp A boolean value to trim "var." and following words (usually means variety) in scientific names (see pattern.var_sp) or not (default).
+#' param trim.auther_year_in_bracket A boolean value to trim strings in bracket (default, usually means authors and year) or not.
+#' param trim.dummy_num A boolean value to trim leading or trailing non-alphabet symbols/numbers (default) or not.
+#' param simplify_two A boolean value to trim scientific names to (maximum) two words only or not (default).
+#' param trim.spp_abbrev A boolean value to trim trailing "spp."/"sp." or not (default).
+#' return A charcter vector of simplified scientific names
+#' examples
 #' sciname_simplify(c("Aricidea sp. A", "Armandia cf. leptocirrus","Thalenessa spinosa asitica","Ablennes hians (Valenciennes; 1843)"), simplify_two=TRUE, trim.spp_abbrev=TRUE)
 #' > [1] "Aricidea" "Armandia leptocirrus" "Thalenessa spinosa" "Ablennes hians"
-#' @rdname sciname_simplify
-#' @export
+#' rdname sciname_simplify
+#' export
 sciname_simplify <- function (x,
                               trim.cf_sp = TRUE,
                               pattern.var_sp = "var.", trim.var_sp = FALSE,
