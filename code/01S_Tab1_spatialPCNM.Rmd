@@ -14,12 +14,12 @@ library(packfor) ## forward selection
 library(NanhsiDT) # Functions and datasets used in Nanhis Forest Dynamics Plot.
 
 ## Download used functions of R cod from github in your current directory, or load from your local dir if alread downolad
-download.file("https://raw.githubusercontent.com/cywhale/spatially_structured_regen/master/code/NanhsiDT_miscfunc01.R", "NanhsiDT_miscfunc01.R")
+download.file("https://raw.githubusercontent.com/cywhale/spat_struct_regen/master/code/NanhsiDT_miscfunc01.R", "NanhsiDT_miscfunc01.R")
 source("NanhsiDT_miscfunc01.R")
 file.remove("NanhsiDT_miscfunc01.R")
 
 # require(RCurl) ## https://goo.gl/YTsXK1 cannot work for strange parse error...
-# eval(parse(text = getURL('https://raw.githubusercontent.com/cywhale/spatially_structured_regen/master/code/NanhsiDT_miscfunc01.R')), envir = .GlobalEnv)
+# eval(parse(text = getURL('https://raw.githubusercontent.com/cywhale/spat_struct_regen/master/code/NanhsiDT_miscfunc01.R')), envir = .GlobalEnv)
 
 ## load dataset, NOTE: Note that the https://URL may not work except on Windows? if not, just download the files
 ## download.file(URL,"rdata"); load("rdata")
@@ -40,7 +40,7 @@ Allow_ReRun_PCNM <- TRUE
 if (Allow_ReRun_PCNM) {
   u.PCNM.auto <- PCNM(uxy.d1)
 } else {
-  load(url("https://github.com/cywhale/spatially_structured_regen/raw/master/dataset/tmp_PCNM_us.RData"))
+  load(url("https://github.com/cywhale/spat_struct_regen/raw/master/dataset/tmp_PCNM_us.RData"))
 }
 ## Truncation level = 30 
 ## Time to compute PCNMs = 5098.420000  sec 
@@ -92,7 +92,7 @@ u.PCNM.red <- u.PCNM.pos[,c(u.PCNM.sign)]
 ```
 ``` {r Topographic_facotrs, echo=TRUE}
 ## load topography data derived from 00x_terrainPlot.Rmd, or you can souce the R files to re-run
-load(url("https://github.com/cywhale/spatially_structured_regen/raw/master/dataset/tmp_ssn_topography.RData"))
+load(url("https://github.com/cywhale/spat_struct_regen/raw/master/dataset/tmp_ssn_topography.RData"))
 
 utopox <- utopo[,-c("transect","x","y"), with=FALSE]
 ux.env.rda <- rda(u.h.det, utopox)
@@ -442,6 +442,8 @@ plot(tt, digits=3)
 ```
 ``` {r Final output for Table 1, Table S1 using ztable, echo=TRUE}
 require(ztable)
+options(ztable.type="viewer") #"html"
+
 data(spdu) ## in NanhsiDT, taxonomic information of understory and seedling species 
 u.xy <- us_env09[,.(x,y)]
 spt.lst <- unique(spdu[,.(spcode, family)])
@@ -564,6 +566,10 @@ zt1 <- addrgroup(zt1,
                             ))
 
 zt1
+print(zt1)
+
+```
+```{r End_of_file, echo=FALSE}
 
 closeAllConnections()
 
