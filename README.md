@@ -27,3 +27,6 @@
 **Link**
 
 <a href="docs/01S_Tab1_spatialPCNM.nb.html">Results of PCNM-RDA analyses, to extract understory-plants spatial structure (Table 1, Table S1, Fig. S2)</a> 
+
+<a href="docs/Table1_S1.html"> Demostration by ztable: Results of redundancy analysis (RDA) based on forward selection, showing significant factors (and their associated F-values) explaining spatial variations in seedling assemblages. (Table 1, Table S1)</a> 
+  * Table S1: Understory high-herb species and adult tree species that were significant in explaining spatial variations of seedling assemblages and associated F-values.
