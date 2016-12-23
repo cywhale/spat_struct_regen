@@ -1,0 +1,570 @@
+---
+title: "PCNM analysis to extract understory-plant spatial structure"
+author: "cywhale"
+date: "Nov, 2016"
+output:
+  html_notebook: default
+  html_document: default
+---
+```{r MoranI_eigenvector_map (MEM), echo=TRUE}
+library(data.table)
+library(magrittr)
+library(vegan) #### Hellinger Transform compostion data before analyses of PCNM-RDA 
+library(packfor) ## forward selection
+library(NanhsiDT) # Functions and datasets used in Nanhis Forest Dynamics Plot.
+
+## Download used functions of R cod from github in your current directory, or load from your local dir if alread downolad
+download.file("https://raw.githubusercontent.com/cywhale/spatially_structured_regen/master/code/NanhsiDT_miscfunc01.R", "NanhsiDT_miscfunc01.R")
+source("NanhsiDT_miscfunc01.R")
+file.remove("NanhsiDT_miscfunc01.R")
+
+# require(RCurl) ## https://goo.gl/YTsXK1 cannot work for strange parse error...
+# eval(parse(text = getURL('https://raw.githubusercontent.com/cywhale/spatially_structured_regen/master/code/NanhsiDT_miscfunc01.R')), envir = .GlobalEnv)
+
+## load dataset, NOTE: Note that the https://URL may not work except on Windows? if not, just download the files
+## download.file(URL,"rdata"); load("rdata")
+data(us_env09)
+data(compo_us_sp09)
+
+#### PCNM analysis 
+#### reference code, & cited in my paper: Borcard D, Gillet F, Legendre P (2011) Numerical ecology with R. Springer, New York
+####
+library(PCNM) #### installation from: https://r-forge.r-project.org/R/?group_id=195
+
+uxy.d1 <- dist(us_env09[,.(x,y)])
+(udmin<- max(spantree(uxy.d1)$dist))
+uxy.d1[uxy.d1 > udmin] <- 4*udmin #### # Truncate the distance matrix
+
+#### PCNM() takes hours to compute.. to have a coffee. If you don't want to re-run steps, you can load it from Github
+Allow_ReRun_PCNM <- TRUE
+if (Allow_ReRun_PCNM) {
+  u.PCNM.auto <- PCNM(uxy.d1)
+} else {
+  load(url("https://github.com/cywhale/spatially_structured_regen/raw/master/dataset/tmp_PCNM_us.RData"))
+}
+## Truncation level = 30 
+## Time to compute PCNMs = 5098.420000  sec 
+## check
+## summary(u.PCNM.auto)
+## plot(u.PCNM.auto$spanning,us_env09[,.(x,y)])
+## u.PCNM.auto$expected_Moran # Expected value of I, no spatial correlation: -0.001007049
+
+# Eigenfunctions with positive spatial correlation
+u.PCNM.pos <- as.data.frame(u.PCNM.auto$vectors)[,which(u.PCNM.auto$Moran_I$Positive == TRUE)]
+
+```
+``` {r RDA_variation_partitioning (understory), echo=TRUE}
+#### Prepare composition data of understory plants 
+xres <- compo_us_sp09[-which(substr(tag,1,1)=="t" | (substr(tag,1,1)=="u" & lifeform=="T")),]
+xus0 <- xres[,.(transect,spcode,coverage)] %>%
+  dcast(transect~spcode,fun=sum,fill=0) ##### specie-site composition data
+
+#### delete too rare species
+tt <- apply(xus0[,-1,with=F],2,function(x) {length(which((!is.na(x))&(x!=0)))})
+st <- apply(xus0[,-1,with=F],2,sum)
+(deluc.idx <- which(tt<2 & st<=1)) #### delete species, please check it
+length(deluc.idx)                  #### just check: 36
+
+us.new <- xus0[,-1,with=F] %>% .[,-deluc.idx,with=F]
+xres.h <- decostand(us.new, "hellinger") #### Hellinger Transform
+# linearly detrended composition data, y-direction is mainly the gradient of topographic altitude
+u.h.det <- resid(lm(as.matrix(xres.h) ~ x, data=us_env09[,.(x,y)]))
+
+#### RDA using all PCNM variables with positve Moran'I as explanatory variables
+u.PCNM.rda <- rda(u.h.det, u.PCNM.pos)
+# anova.cca(u.PCNM.rda)
+#### Adjusted R2 (R2a) used in forward selection, dependent package: packfor
+
+(RsquareAdj(u.PCNM.rda)$adj.r.squared)
+## [1] 0.2093211
+## Foward-selection significant PCNM variables in explaining variations of understory community
+## Take abpit few ten minutes.. if you don't want to re-run, load it from github in aboving steps
+if (Allow_ReRun_PCNM) {
+  (u.PCNM.fwd <- forward.sel(u.h.det, as.matrix(u.PCNM.pos), 
+                             adjR2thresh=RsquareAdj(u.PCNM.rda)$adj.r.squared))
+}
+
+(u.PCNM.sign <- sort(u.PCNM.fwd[,2])) #### Significant PCNM variables 
+u.PCNM.red <- u.PCNM.pos[,c(u.PCNM.sign)]
+## save time-consuming results...
+# save(u.PCNM.auto, u.PCNM.fwd, file="D:/R/01paper_ssn/simu_out/tmp_PCNM_us.RData")
+
+```
+``` {r Topographic_facotrs, echo=TRUE}
+## load topography data derived from 00x_terrainPlot.Rmd, or you can souce the R files to re-run
+load(url("https://github.com/cywhale/spatially_structured_regen/raw/master/dataset/tmp_ssn_topography.RData"))
+
+utopox <- utopo[,-c("transect","x","y"), with=FALSE]
+ux.env.rda <- rda(u.h.det, utopox)
+(ux.env.R2a <- RsquareAdj(ux.env.rda)$adj.r.squared)
+ux.env.fwd <- forward.sel(u.h.det, utopox, adjR2thresh=ux.env.R2a)
+#,nperm=999)
+ux.env.red <- utopox[,sort(ux.env.fwd$order),with=F]
+colnames(ux.env.red)
+
+```
+
+``` {r permutation_test_PCNM_variables, echo=TRUE}
+## Componetns patterns of understory spatial structure (MEM) esplains Understroy(Yu), Seedling(Ys)
+### species weights (understory sp) in related to species variations 
+uw <- apply(xres.h,2,var)
+uw <- uw/sum(uw)
+
+set.seed(0)
+ux.env.redx <- cbind(ux.env.red, trx[,.(tspos1,tspos2,tspos3,tspos4)])
+tstu <- testResid(Y=u.h.det, w=uw, 
+                  MEM=u.PCNM.red, Tx=ux.env.redx, B=999)
+ukm.red <- u.PCNM.pos[,u.PCNM.sign[tstu$sig]]
+length(colnames(ukm.red))
+#44
+
+colnames(ux.env.redx) %in% colnames(u.env.redx)
+ukm <- rda(u.h.det, ukm.red, ux.env.redx)
+(RsquareAdj(ukm)$adj.r.squared)
+ukm.ax<- scores(ukm, choices=c(1,2), display="lc", scaling=1) ### the same as ua.red[,1:2]
+
+#require(spdep)
+#uenv4 <- data.frame(us_env09)
+#coord.uenv= uenv4[,c("x","y")]
+#coords = coordinates(coord.uenv)
+#nbg = graph2nb(relativeneigh(coords,nnmult=4),sym=T) #gabrielneigh(coords,nnmult=4)
+#plot(nbg,coords)
+#ttw <- nb2listw(nbg, style="B")
+# Construct matrix links.mat 
+#links.mat.dat <- listw2mat(ttw)
+#save(ukm.ax, ukm2.ax, ukx.ax, nbg, ttw, links.mat.dat, file='D:/R/tmp/ukm_ax_20161215.RData')
+```
+
+``` {r RDA_variation_partitioning (seedling), echo=TRUE}
+#### Prepare composition data of tree seedlings
+xsdl <- compo_us_sp09[substr(tag,1,1)=="t",]
+sdl0 <- xsdl[,.(transect,spcode)] %>% .[,abund:=1] %>%
+    dcast(transect~spcode,fun=sum,fill=0) ##### specie-site composition data
+
+sdl0 <- merge(sdl0, us_env09[,.(transect)], by="transect", all=T) ## some transects had no seedlings in 2009 survey
+for(j in colnames(sdl0)[-1]) {set(sdl0,j=j, value=ifelse(is.na(sdl0[[j]]),0,sdl0[[j]]))}
+
+#### delete too rare species
+tt <- apply(sdl0[,-1,with=F],2,function(x) {length(which((!is.na(x))&(x!=0)))})
+(delsdl.idx <- which(tt<2)) #### del species, please check it
+delsdl.idx <- delsdl.idx[-3]#### re-check from the following masked lines
+sdl.new <- sdl0[,-1,with=F] %>% .[,-delsdl.idx,with=F]
+  # but if  check whicj site has no species after del rare species
+  # tt2 <- apply(sdl.new,1,function(x) {length(which((!is.na(x))&(x!=0)))}); length(which(tt2==0))
+  # which(tt2==0)
+  #[1] 392
+  # sdl0[392,]
+  ## with deutta, its delsdl.idx[3]... so cannot delete delsdl.idx[3]
+
+xsdl.h <- decostand (sdl.new, "hellinger") #### Hellinger Transform
+# linearly detrended composition data, y-direction is mainly the gradient of topographic altitude
+s.h.det <- resid(lm(as.matrix(xsdl.h) ~ x, data=us_env09[,.(x,y)]))
+
+#### RDA using all PCNM variables with positve Moran'I as explanatory variables
+s.PCNM.rda <- rda(s.h.det, u.PCNM.pos)
+
+##  anova.cca(s.PCNM.rda)
+## Adjusted R2 (R2a) used in forward selection, dependent package: packfor
+(RsquareAdj(s.PCNM.rda)$adj.r.squared)
+#[1] 0.1058787
+
+#if (Allow_ReRun_PCNM) {
+(s.PCNM.fwd <- forward.sel(s.h.det, as.matrix(u.PCNM.pos),
+                           adjR2thresh=RsquareAdj(s.PCNM.rda)$adj.r.squared))
+#} 
+
+(s.PCNM.sign <- sort(s.PCNM.fwd$order)) 
+s.PCNM.red <- u.PCNM.pos[,c(s.PCNM.sign)]
+
+```
+``` {r permutation_test_PCNM_variables (seedlings), echo=TRUE}
+### species weights (seedlings sp) in related to species variations 
+sw <- apply(xsdl.h,2,var)
+sw <- sw/sum(sw)
+
+s.envx <- utopox
+
+sx.env.rda <- rda(s.h.det, s.envx)#,vxy.red)
+#anova.cca(s.env.rda)
+(sx.env.R2a <- RsquareAdj(sx.env.rda)$adj.r.squared)
+sx.env.fwd <- forward.sel(s.h.det, s.envx, adjR2thresh=sx.env.R2a)
+#,nperm=999)
+sx.env.red <- s.envx[,sort(sx.env.fwd$order),with=F]
+colnames(sx.env.red)
+
+set.seed(0)
+tsts <- testResid(Y=s.h.det, w=sw, 
+                  MEM=s.PCNM.red, Tx=sx.env.red, B=999)
+skm.red <- u.PCNM.pos[,s.PCNM.sign[tsts$sig]]
+
+# all.equal(skm.red, sk.red) ## reproducible against previous-version running..
+# [1] TRUE
+colnames(skm.red)
+# "V2"   "V3"   "V4"   "V7"   "V8"   "V15"  "V16"  "V21" "V22"  "V24"  "V32"  "V46"  "V51"  "V65"  "V250"
+
+## Because we reduce to subset K by testResid, We need to know is this reduction cause loss of any significant component pattern in u.PCNM.pos
+tst_mdlk <- as.integer(substr(colnames(skm.red),2,nchar(colnames(skm.red))))
+tstn <- 1
+
+while (length(tst_mdlk)>0 | tstn>10) {
+  tstn <- tstn+1
+  print(tstn)
+
+  mdlt <- testMEM(Y=residuals(lm(data.matrix(s.h.det) ~ data.matrix(u.PCNM.pos[,tst_mdlk]) + data.matrix(sx.env.red))), w=sw, MEM=u.PCNM.pos, B=999)
+  rest <- mdlt$sig
+  print(rest)
+
+  if (length(rest)>0) {
+    tst_mdlk <- sort(unique(c(tst_mdlk, rest)))
+    resK <- tst_mdlk
+
+  } else {
+    resK <- tst_mdlk
+    tst_mdlk <- rest
+  }
+}
+
+#### none!!!
+#[1] 2
+#integer(0)
+```
+``` {r Fig S1 plot function, echo=TRUE}
+library(ggplot2)
+library(grid)
+library(gridExtra)
+
+windowsFonts(sans=windowsFont("TT Arial"))
+
+
+baru <- rep(4,ncol(u.PCNM.red))  #"white"
+baru[setdiff(match(colnames(ua.red), colnames(u.PCNM.red)),match(colnames(ukm.red), colnames(u.PCNM.red)))] <- 3 #"grey85"
+baru[match(colnames(ukm.red), colnames(u.PCNM.red))] <- 1 #"grey35"
+baru[match(colnames(skm.red), colnames(u.PCNM.red))] <- 2 #"black"
+
+dg1 <- data.frame(npcnm=seq_along(u.PCNM.red), obs=tstu$obs, cih=tstu$stats, vpcnm=colnames(u.PCNM.red), sig=baru)
+
+dg1$sig <- factor(dg1$sig,levels=c(1,2,3,4),
+                  labels=c("Significant to understory community",
+                           "Significant both to understory and seedling communities",
+                           "Retained by foward-selection but not significant in permutation",
+                           "Not significant"))
+
+g1 <- ggplot(dg1, aes(x=factor(npcnm), y=obs, fill=factor(baru))) + geom_bar(stat="identity",colour="black",#width=0.25,
+                                                                             position="dodge") +
+  scale_fill_manual(name="Significance in permutation test",values=c("grey35","black","grey85","white"),
+                    labels=c("Significant to understory community",
+                             "Significant both to understory and seedling communities",
+                             "Retained by foward-selection but not significant in permutation",
+                             "Not significant")) +
+  geom_line(aes(x=npcnm,y=cih), linetype="dashed", color = "red") +
+  scale_x_discrete(name="PCNM variables",
+                   #breaks=c("0.5","1","2"),
+                   labels=substr(colnames(u.PCNM.red),2,nchar(colnames(u.PCNM.red))))+
+  xlab(NULL)+ylab("Variance") + scale_y_continuous(expand = c(0, 0), limits=c(0, max(c(dg1$cih, dg1$obs))+0.0005))+
+  theme(
+    panel.grid.minor = element_blank(),
+    axis.text = element_text(family = "sans", size=8),
+    axis.text.x = element_text(family = "sans", size=8 ,margin = margin(t = 0)),
+    axis.title.x = element_text(family = "sans",size=10), 
+    axis.title.y = element_text(family = "sans",size=10), 
+    axis.line.x = element_line(colour = "black"),
+    axis.line.y = element_line(colour = "black"),
+    strip.text.x = element_text(family = "sans", size=8, face="bold"),
+    strip.text.y = element_text(family = "sans", size=8),
+    legend.key = element_rect(fill = "transparent", colour = "transparent"),
+    legend.text = element_text(family = "sans"), 
+    legend.background = element_rect(fill = "transparent", colour = "transparent"), 
+    legend.position = c(.75,.8),
+    panel.background = element_rect(fill="transparent",colour=NA) 
+  )
+
+## similar codes as aboving chunk, just for plotting
+set.seed(0)
+tst_mdlk <- as.integer(substr(colnames(skm.red),2,nchar(colnames(skm.red))))
+objs <- testMEM(Y=residuals(lm(data.matrix(s.h.det) ~ data.matrix(u.PCNM.pos[,tst_mdlk]) + data.matrix(sx.env.red))),  w=sw, MEM=u.PCNM.pos, B=999)
+
+bars <- rep(0,ncol(u.PCNM.pos))
+if (length(objs$sig)>0) {
+  bars[objs$sig] <- 1
+}
+
+dg2 <- data.frame(npcnm=seq_along(u.PCNM.pos), obs=objs$obs, cih=objs$perms[2], #vpcnm=colnames(u.PCNM.pos),
+                  sig=bars)
+
+dg2$sig <- factor(dg2$sig,levels=c(1,2),
+                  labels=c("Not significant",
+                           "Significant to seedling assemblages"))
+
+g2 <- ggplot(dg2, aes(x=factor(npcnm), y=obs, fill=factor(bars))) + geom_bar(stat="identity",colour="black",#width=0.25,
+                                                                             position="dodge") +
+  scale_fill_manual(name="Significance in permutation test",values=c("white","grey35"),
+                    labels=c("Not significant", "Significant to seedling assemblages")) +
+  geom_line(aes(x=npcnm,y=cih), linetype="dashed", color = "red") +
+  scale_x_discrete(name="PCNM variables",
+                   breaks = scales::pretty_breaks(n = 20)(seq_along(u.PCNM.pos)))+
+  ylab("Variance") + scale_y_continuous(expand = c(0, 0), limits=c(0, max(c(dg2$cih, dg2$obs))+0.0005))+
+  theme(
+    panel.grid.minor = element_blank(),
+    axis.text = element_text(family = "sans", size=8), 
+    axis.text.x = element_text(family = "sans", size=8 ,margin = margin(t = 0)),
+    axis.title.x = element_text(family = "sans",size=10), 
+    axis.title.y = element_text(family = "sans",size=10), 
+    axis.line.x = element_line(colour = "black"),
+    axis.line.y = element_line(colour = "black"),
+    strip.text.x = element_text(family = "sans", size=8, face="bold"),
+    strip.text.y = element_text(family = "sans", size=8),
+    legend.key = element_rect(fill = "transparent", colour = "transparent"),
+    legend.text = element_text(family = "sans"), 
+    legend.background = element_rect(fill = "transparent", colour = "transparent"),
+    legend.position =  c(.7,.85),
+    panel.background = element_rect(fill="transparent",colour=NA)
+  )
+
+```
+
+``` {r Fig S1a, echo=TRUE}
+align_widths(g1,g2)
+tab1 <- #arrangeGrob(g1,g2, ncol = 1, padding=0)
+        ggplot_shared_axes(g1,g2,elements=c("xaxis"), byrow=F)
+grid.arrange(tab1) ## Fig S1a
+```
+
+``` {r Venn diagram for variation partition for understory community, echo=TRUE}
+(varu<- vegan::varpart(xres.h, ux.env.red, ukm.red))
+par(mfrow=c(1,2),mar=c(2.2,1.8,0.1,0.1),cex=0.7,cex.axis=0.75,cex.lab=0.75)
+vegan::showvarparts(2)
+plot(varu, digits=3) ## Fig. S1b, and "X2"(ukm.red) contributed 20.1% (Adj.R.squared) to understory variations
+```
+``` {r Neighborhood factors across forest strata in Table 1, echo=TRUE}
+library(packfor)
+library(NanhsiDT)
+data("compo_us_sp09")
+data("us_env09")
+
+xres1  <- compo_us_sp09[substr(tag,1,1)!="t",] # resident species
+usHigh <- 30
+c_gndl <- quadDT_cov(xres1[height<=usHigh,],"transect","height","coverage",adjMax=TRUE)
+c_gndh <- quadDT_cov(xres1[height>usHigh,], "transect","height","coverage",adjMax=TRUE)
+
+## evaluate understory coverage of each sampling site, subdivided into high herbs (height > 30cm) and others
+uscov <- ladd_merge(list(us_env09 %>% .[,c("h_gndl","c_gndl","h_gndh","c_gndh"):=list(0,0,0,0)] %>%  
+           .[,.(transect,h_gndl,c_gndl,h_gndh,c_gndh)],
+           c_gndl %>% setnames(2:3,c("h_gndl","c_gndl")),
+           c_gndh %>% setnames(2:3,c("h_gndh","c_gndh"))),by="transect")
+
+## Neighborhood factors from juvenile and adult trees
+
+tnc <- pt_NanhsiBA(us_env09[,.(x,y)], taxon='', taxon_rank="all", rng=4, mode="quadrat") %>% data.table()
+
+noccux <- rda(scale(cbind(tnc, uscov[,.(h_gndl, c_gndl, h_gndh,c_gndh)])))
+noccux$CA$eig/sum(noccux$CA$eig)
+## cited from my paper
+## In summary, neighborhood factors include overstory BA, shrub BA, tree density, herb cover and mean height in each site. These factors were treated by PCA, and the principal components were abbreviated as “strata PC”s. Strata PC1-4 explained 29.0%, 20.0%, 16.3%. 13.6% variations, respectively.
+
+noccux$CA$v
+## Top two factors for PC1-4 were high-herb cover and mean height for PC1, shrub BA and tree density for PC2, cover and mean height of other herbs for PC3, and overstory BA and shrub BA for PC4.
+
+sx.trx <- cbind(ukm.ax[,c("RDA1","RDA2")] %>% data.table() %>% setnames(1:2,c("uRDA1","uRDA2")),
+                noccux$CA$u[,1:4] %>% data.table() %>% setnames(1:4,paste0("strata_pc",1:4)))
+
+## Forward selection to see which neighborhood factors are significant to variations of seedling assemblages
+sx.trx.rda <- rda(s.h.det, sx.trx) 
+sx.trx.anova = anova.cca(sx.trx.rda)
+(RsquareAdj(sx.trx.rda)$adj.r.squared)
+(sx.trx.fwd <- forward.sel(s.h.det, sx.trx, adjR2thresh=RsquareAdj(sx.trx.rda)$adj.r.squared))
+sx.trx.red <- sx.trx[,sort(sx.trx.fwd$order),with=F]
+colnames(sx.trx.red)
+
+sx.all <- cbind(sx.env.red, sx.trx.red) ## Relative contribution from topography and neighborhood factors
+sx.all.rda <- rda(s.h.det, sx.all) 
+#anova.cca(sx.all.rda)
+RsquareAdj(sx.all.rda)$adj.r.squared
+sx.all.fwd <- forward.sel(s.h.det, sx.all, adjR2thresh=RsquareAdj(sx.all.rda)$adj.r.squared)
+sx.all.red <- sx.all[,sort(sx.all.fwd$order),with=F]
+colnames(sx.all.red)
+sx.all.fwd ## Basically, it's part of the result Table 1 in my paper (without sorting)
+```
+
+``` {r Neighboring high-herb species and adults vs variations in seedling assemblages in Table S1, echo=TRUE}
+data(spdt)  ## in NanhsiDT, taxonomic information of tree species 
+Nsdl <- apply(sdl.new,2,sum)
+(tidxt <- names(Nsdl[which(Nsdl>=20)])) ## select tree species of interest with seedling numbers > 20
+
+sdl_tst<- c("Lauraceae","Fagaceae","Pentaphylacaceae","Adoxaceae") ## select Family of interest
+## select target tree species, including machilus spp.
+tsel <- unique(spdt[(spcode %in% tidxt | substr(spcode,1,4)=="mach") & (family %in% sdl_tst),]$spcode)
+
+## evaluate weighted (1/distance) BA in a searching circle with radius = rng from each sampling site
+tbax <- pt_NanhsiBA(us_env09[,.(x,y)], taxon=tsel, taxon_rank="spcode", rng=7.5) %>% data.table()
+
+if (any(colSums(tbax)==0)) {
+    tbax %<>% .[,-which(colSums(tbax)==0),with=FALSE]
+} 
+
+## remove covarying topographic effects
+tbaresx<- residuals(lm(data.matrix(tbax) ~ data.matrix(sx.env.red)))
+
+## compostion of understory high herbs
+## highsp <- unique(xres[height>30 & lifeform=="H",]$spcode)
+
+ush.h <- xres[,freq:=length(which(!duplicated(transect))), by=.(spcode)] %>%
+  .[freq>=80 & spcode %in% unique(xres[height>30 & lifeform=="H",]$spcode), .(transect,spcode,coverage)] %>%
+  dcast(transect~spcode,fun=sum,fill=0) %>%
+  merge(us_env09[,.(transect)], by="transect",all=T) %>% setkey(transect)
+
+for(j in colnames(ush.h)) {set(ush.h, j=j, value=ifelse(is.na(ush.h[[j]]),0,ush.h[[j]]))}
+
+ush.h <- vegan::decostand(ush.h[,-1,with=F],"hellinger")#)
+
+## remove covarying topographic effects
+ushresx <- residuals(lm(data.matrix(ush.h) ~ data.matrix(sx.env.red)))
+
+spselx <- cbind(ushresx, tbaresx)
+sx.h.res <- residuals(lm(data.matrix(s.h.det) ~ data.matrix(sx.env.red)))
+
+sx.tre.rda <- rda(sx.h.res, spselx) #,vxy.red)
+#s.tre.anova = anova.cca(s.tre.rda)
+RsquareAdj(sx.tre.rda)$adj.r.squared
+sx.tre.fwd <- forward.sel(sx.h.res, spselx, adjR2thresh=RsquareAdj(sx.tre.rda)$adj.r.squared)
+sx.tre.red <- spselx[,sort(sx.tre.fwd$order)]#,with=F]
+colnames(sx.tre.red)
+sx.tre.fwd ## Basically, it's part of the result Table S1 in my paper (without sorting)
+
+```
+``` {r Venn diagram in Fig S2.c for variation in seedling assemblages, echo=TRUE}
+
+## Venn diagram for variation partition of seedling assemblages
+(tt<- varpart(s.h.det, sx.env.red, ukm.red, sx.trx.red, sx.tre.red))
+par(mfrow=c(1,2),mar=c(2.2,1.8,0.1,0.1),cex=0.7,cex.axis=0.75,cex.lab=0.75)
+showvarparts(4)
+plot(tt, digits=3)
+  
+```
+``` {r Final output for Table 1, Table S1 using ztable, echo=TRUE}
+require(ztable)
+data(spdu) ## in NanhsiDT, taxonomic information of understory and seedling species 
+u.xy <- us_env09[,.(x,y)]
+spt.lst <- unique(spdu[,.(spcode, family)])
+
+for (j in sdl_tst) {
+    print(j)
+    fct <- spt.lst[family==j,]
+    print(colnames(tbaresx)[which(colnames(tbaresx) %in% fct$spcode)])
+    spselt <- cbind(ushresx, tbaresx[,which(colnames(tbaresx) %in% fct$spcode)])
+
+    sdlt <- sdl.new[,na.omit(match(spdu[family==j,]$spcode, colnames(sdl.new))),with=F] %>%
+      decostand("hellinger")
+    sdlt.h.det <- resid(lm(as.matrix(sdlt) ~ x, data=u.xy))
+
+    assign(paste("sx",j,"rda",sep="."), rda(sdlt.h.det, sx.all))
+    r2at <- RsquareAdj(get(paste("sx",j,"rda",sep=".")))$adj.r.squared
+    print(r2at)
+
+    assign(paste("sx",j,"fwd",sep="."), forward.sel(sdlt.h.det, sx.all, adjR2thresh=r2at))
+    print(colnames(sx.all)[sort(get(paste("sx",j,"fwd",sep="."))$order)])
+
+    print("test ush sp and tree sp relationship...")
+
+    sdlt.h.res <- residuals(lm(data.matrix(sdlt.h.det) ~ data.matrix(sx.env.red)))
+    tt<- rda(sdlt.h.res, spselt) 
+    r2at <- RsquareAdj(tt)$adj.r.squared
+    print(r2at)
+
+    tt1 <- forward.sel(sdlt.h.res, spselt, adjR2thresh=r2at)
+    print(colnames(spselx)[sort(tt1$order)])
+
+    assign(paste("sx",j,"fwd",sep="."), rbind(get(paste("sx",j,"fwd",sep=".")), tt1))
+}
+
+sx.All.fwd <- rbind(sx.all.fwd, sx.tre.fwd) #s.ush.fwd) ## BUT Notice: sx.ush.fwd is another test
+
+term <- c("All",sdl_tst)
+
+dt1 <- data.table()
+for (j in 1:length(term)) {
+    dt <- data.table(get(paste0("sx.",term[j],".fwd")))
+    adjr2 <- unlist(lapply(1:nrow(dt),function (x,dt) {
+      if (x==1) {
+        x1 <- dt$AdjR2Cum[x]
+      } else {
+        x1 <- dt$AdjR2Cum[x]-dt$AdjR2Cum[x-1]
+      }
+      return (x1)
+    },dt=dt))
+    dt$adjR2 <- adjr2
+    dt$term  <- term[j]
+    dt1 <- rbind(dt1,dt)
+}
+setnames(dt1,6,"F_stat")
+dt1[,pstar:=ifelse(round(pval,2)<0.01,"**",ifelse(round(pval,2)<0.05,"*","NS"))]
+dt2 <- dt1[,.(variables,term,F_stat,pstar)] %>% #,pval,adjR2)] %>%
+    dcast(variables ~ term, value.var=c("F_stat","pstar"), fill ="") %>% #,"pval","adjR2")) %>%
+    .[,attrx:=ifelse(variables %in% colnames(sx.env.red),1,ifelse(variables %in% colnames(sx.trx.red),2,3))] %>%
+    .[order(F_stat_All,decreasing=TRUE),] %>%
+    .[order(attrx),] %>% .[,attrx:=NULL]
+
+dt2$variables
+## Mapping variable names as real output names in Table of document
+var1 <- data.frame(variables=c("alt1","tspos1","tspos4","tcvex2","tcvex1","tsina","slope1",
+                               "tspos2","tspos3","alt2","uRDA1",
+                               "den", "uRDA2",  "overBA", "h_gndh",
+                               "strata_pc1","strata_pc2","strata_pc4"),
+                   prnvar=c("Altitude","Slopes dummy(1)","Slopes dummy(4)",
+                            "Convexity(2)","Convexity","Aspect(sin)","Slope",
+                            "Slopes dummy(2)","Slopes dummy(3)",
+                            "Altitude(2)","uRDA1",
+                            "Tree density", "uRDA2",  "overstory BA", "High-herb height",
+                            "Strata PC(1)", "Strata PC(2)","Strata PC(4)"))
+
+## defined in NanhsiDT_miscfunc01.R
+ushsp <- sciname_simplify(spdu$sciname[match(colnames(ush.h),#(s.ush.red),
+                                             spdu$spcode)], simplify_two=TRUE)
+
+tresp <- sciname_simplify(spdt$sciname[match(colnames(tbaresx), spdt$spcode)], simplify_two=TRUE)
+
+var1 <- rbind(var1,
+              data.frame(variables=colnames(ush.h), #s.ush.red),
+                         prnvar=ushsp),
+              data.frame(variables=colnames(tbaresx), prnvar=tresp))
+
+dtx <- dt2[,.(variables, F_stat_All, pstar_All,
+              F_stat_Lauraceae, pstar_Lauraceae,
+              F_stat_Fagaceae, pstar_Fagaceae,
+              F_stat_Pentaphylacaceae, pstar_Pentaphylacaceae,
+              F_stat_Adoxaceae, pstar_Adoxaceae)] %>%
+setnames(1:11,c("variables", "All.F","All.sig",              ## F-statistic --> F
+                "Lauraceae.F", "Lauraceae.sig",
+                "Fagaceae.F", "Fagaceae.sig",
+                "Pentaphylacaceae.F", "Pentaphylacaceae.sig",
+                "Adoxacea.F", "Adoxacea.sig")) %>%
+    .[,variables:=var1$prnvar[match(variables, var1$variables)]]
+
+dtx1 <- dtx[11:nrow(dtx),]
+sigus <- which(dtx1$variable %in% ushsp)
+sigtr <- which(dtx1$variable %in% tresp)
+
+dtx2 <- rbind(dtx[1:10,],
+              dtx1[sigus,] %>% .[order(All.F,decreasing = T),],
+              dtx1[sigtr,] %>% .[order(All.F,decreasing = T),])
+
+## HTML version (Table 1, Table S1)
+## require(ztable)
+
+zt1 <- copy(dtx2) %>%
+    setDF() %>%
+    ztable(align="ccrlrlrlrlrl")
+zt1 <- addcgroup(zt1, cgroup= c(NA_character_,term), n.cgroup= c(1,2,2,2,2,2))
+zt1 <- addrgroup(zt1,
+                 rgroup= c("Topographic factors", "Neighborhood factors",
+                           "Neighboring understory species",
+                           "Neighboring tree species"),
+                n.rgroup= c(length(which(colnames(sx.env.red) %in% colnames(sx.all))),
+                            length(which(colnames(sx.trx.red) %in% colnames(sx.all))),
+                            length(sigus),length(sigtr)##length(sigat),length(sigjt)
+                            ))
+
+zt1
+
+closeAllConnections()
+
+```
