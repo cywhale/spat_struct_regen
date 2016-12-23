@@ -1,5 +1,5 @@
-### Seedling and seedrain studies in Nanhsi Dynamics Plot, Taiwan
-#### Reproducible researches in understory-plant spatially structured seedling assemblages in tree regeneration
+# Seedling and seedrain survey in Nanhsi Dynamics Plot, Taiwan
+## Reproducible research in understory-plant spatially structured seedling assemblages in tree regeneration
 * Title: "Local neighborhood communities in understory play a critical role affecting regeneration niches and subsequent community assembly in a montane cloud forest"
 * Authors: Chi-Yu Weng (cywhale)
 * Status: (not published yet)
