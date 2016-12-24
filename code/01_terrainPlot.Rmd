@@ -1,0 +1,111 @@
+---
+title: "Topographic factors and terrain plot of Nanhsi FDP"
+author: "cywhale"
+date: "Nov, 2016"
+output: html_notebook
+---
+``` {r Topographic_polynomials, echo=TRUE}
+library(data.table)
+library(magrittr)
+library(NanhsiDT)
+
+data(us_env09) ## load understory basic environment surveyed in 2009, require(NanhsiDT)
+## Altitude, slope and convexity, together with their orthogonal polynomials of degree 3 were used 
+## to model relationships between topography and community variations (ref: Legendre et al. 2009)
+alt <- poly(cbind(us_env09$altitude,us_env09$altitude^2,us_env09$altitude^3), degree = 3)
+#alt.pl = as.data.frame(alt[,1:3]) #### check orthogonality
+#colnames(alt.pl)=c("alt1","alt2","alt3")
+#cor(alt.pl$alt1,alt.pl$alt2)
+#cor(alt.pl$alt1,alt.pl$alt3)
+#cor(alt.pl$alt2,alt.pl$alt3)
+
+slope <- poly(cbind(us_env09$slope,us_env09$slope^2,us_env09$slope^3), degree = 3)
+
+tcvex <- poly(cbind(us_env09$tcvex,us_env09$tcvex^2,us_env09$tcvex^3), degree = 3)
+
+utopo <- cbind(us_env09[,.(transect,x,y)],
+               data.table(alt[,1:3]) %>% setnames(1:3,c("alt1","alt2","alt3")),
+               data.table(slope[,1:3]) %>% setnames(1:3,c("slope1","slope2","slope3")),
+               data.table(tcvex[,1:3]) %>% setnames(1:3,c("tcvex1","tcvex2","tcvex3")),
+               us_env09[,{.(tsina = sin(taspect*pi/180),
+                            tcosa = cos(taspect*pi/180))}]
+              )  
+```
+``` {r Forest_type_of_trees, echo=TRUE}
+data(tree_env06) ## load tree subplot basic environment surveyed in 2006, require(NanhsiDT)
+
+trx <- merge(us_env09[,.(transect, x, y, px, py)],
+             tree_env06[,.(px,py,tspos1,tspos2,tspos3,tspos4,tveg)], by=c("px","py"), all.x=T) %>%
+       setkey(transect)
+
+## save intermediate results of topographic factors in this paper (utopo: topograpic factors of understory grids used in variation partitioning; trx: some additional information shared between tree subplots and understory sampling sites; 10 m x 10m projected on 2 m x 2m)
+## save(trx, utopo, file="D:/R/01paper_ssn/simu_out/tmp_ssn_topography.RData")
+
+```
+```{r Download shapefiles from github, echo=FALSE, warning=FALSE, message=FALSE}
+shp_filez <- c("shp","dbf","sbn","sbx","shx","shp.xml")
+dir.create(file.path("./", "tmp_shp"), showWarnings = FALSE)
+setwd(file.path("./", "tmp_shp"))
+for (j in shp_filez) {
+  download.file(paste0("https://github.com/cywhale/spat_struct_regen/raw/master/map/River_2006.",j),
+                paste0("River_2006.",j),mode="wb")
+}
+download.file("https://github.com/cywhale/spat_struct_regen/raw/master/map/NANHSI_TERRAN01.GRD","alt.grd")
+
+setwd("../")
+
+```
+```{r Prepare shape files to plot map, echo=T}
+library(maptools)
+library(rgdal) 
+
+river <- readShapeLines("tmp_shp/River_2006.shp",proj4string=CRS(as.character(NA)))
+
+nan.alt <- readGDAL("tmp_shp/alt.grd") # read elevation data in the whole raster
+
+terran_crd <- coordinates(nan.alt)
+nan_terran <- data.frame(terran_crd[,1],terran_crd[,2],nan.alt$band1)
+colnames(nan_terran)=c("x","y","z")
+
+## Constrain to only plot parts of transect areas
+nt<- nan_terran[order(nan_terran$x),] %>% .[order(.$y),] %>%
+     .[(.$x>=55) & (.$x<=335) & (.$y>=255) & (.$y<=465),]
+#x<- seq(from=0,to=350)
+#y<- seq(from=160,to=500)
+#z<- matrix(nt$z,ncol=length(y),nrow=length(x),byrow=F)
+x <- seq(from=55,to=335)
+y <- seq(from=255,to=465)
+z <- matrix(nt$z,ncol=length(y),nrow=length(x),byrow=F)
+
+# Read cluster results in cluster_constrain_patch01.R, for clustering of sites.
+newclus <- read.table(url('https://raw.githubusercontent.com/cywhale/spat_struct_regen/master/dataset/const_clust_grp01.csv'), header=T,na.string="",sep=",")
+
+uvegt =
+  ifelse(newclus$Gr.5==1,"white",
+  ifelse(newclus$Gr.5==2,"grey80",
+  ifelse(newclus$Gr.5==3,"grey60",
+  ifelse(newclus$Gr.5==4,"grey40","grey20"))))
+
+```
+```{r Fig1 Nanhsi terrain map, echo=TRUE, results='asis'}
+library(PBSmapping)
+tr_name = c("Tr-06","","","Tr-09","","","Tr-12","","","Tr-15","","","Tr-18","","",
+            "Tr-21","","","Tr-24","","","Tr-27","","","Tr-30","","","Tr-33")
+
+par(mfcol=c(1,1),mar=c(2.2,2.2,0.1,0.1),cex=0.9,cex.axis=0.75,cex.lab=0.75, cex.lab=0.75)
+
+plotPolys(combinePolys(SpatialLines2PolySet(river)),
+          xlim=c(55,335),ylim=c(255,465),
+          col="grey85", colHoles="white",border="grey75", lwd=0.75,axes=F)
+
+contour(x=x, y=y, z=z, levels=seq(from=1930,to=2070, by=1), drawlabels=FALSE, lwd=0.75,
+        add=T, col="seashell3",labcex=0.6,method="edge",xlab="",ylab="")
+
+contour(x=x, y=y, z=z, levels=seq(from=1930,to=2070, by=10),
+        labels = seq(from=1930,to=2070, by=10),
+        add=T, col="seashell4",labcex=0.6,xlab="",ylab="")
+symbols(us_env09$x, us_env09$y,squares=rep(2,nrow(us_env09)),inches=F,add=T, fg="black",bg=uvegt)
+axis(2, at=seq(from=260,to=460,by=10),labels=F)
+axis(1, at=seq(from=60,to=330,by=10),labels=tr_name, las=1)
+
+```
