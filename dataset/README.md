@@ -5,4 +5,4 @@ tmp_PCNM_us.RData
 save intermeidate, time-consuming results of PCNM (MEMs) and forward-selection in 01S_Tab1_spatialPCNM.Rmd
 
 tmp_biofac_us.RData
-sav intermediate (neighborhood) bio-factors in understory, from 01S_Tab1_spatialPCNM.rmd. (uscov: us cover data, tnc: tree BA and density, sx.env.red: significant topographic factors to variations in seedling assemblages; ukm.red, understory-plant spatial structure, ukm.ax, ukm.red projected on first RDA axis, partialling out topographic effects. xres.h, xsdl.h, sdl.new, ush.h: compositions of understory or seedlings, .h means hellinger transformed)
+sav intermediate (neighborhood) bio-factors in understory, from 01S_Tab1_spatialPCNM.rmd. (u.xy: x,y-coordinates of understory sites, uscov: us cover data, tnc: tree BA and density, sx.env.red: significant topographic factors to variations in seedling assemblages; ukm.red, understory-plant spatial structure, ukm.ax, ukm.red projected on first RDA axis, partialling out topographic effects. xres.h, xsdl.h, sdl.new, ush.h: compositions of understory or seedlings, .h means hellinger transformed)
