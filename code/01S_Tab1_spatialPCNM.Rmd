@@ -16,7 +16,7 @@ library(NanhsiDT) # Functions and datasets used in Nanhis Forest Dynamics Plot.
 ## Download used functions of R cod from github in your current directory, or load from your local dir if alread downolad
 download.file("https://raw.githubusercontent.com/cywhale/spat_struct_regen/master/code/NanhsiDT_miscfunc01.R", "NanhsiDT_miscfunc01.R")
 source("NanhsiDT_miscfunc01.R")
-file.remove("NanhsiDT_miscfunc01.R")
+#file.remove("NanhsiDT_miscfunc01.R")
 
 # require(RCurl) ## https://goo.gl/YTsXK1 cannot work for strange parse error...
 # eval(parse(text = getURL('https://raw.githubusercontent.com/cywhale/spat_struct_regen/master/code/NanhsiDT_miscfunc01.R')), envir = .GlobalEnv)
@@ -36,7 +36,7 @@ uxy.d1 <- dist(us_env09[,.(x,y)])
 uxy.d1[uxy.d1 > udmin] <- 4*udmin #### # Truncate the distance matrix
 
 #### PCNM() takes hours to compute.. to have a coffee. If you don't want to re-run steps, you can load it from Github
-Allow_ReRun_PCNM <- TRUE
+Allow_ReRun_PCNM <- FALSE
 if (Allow_ReRun_PCNM) {
   u.PCNM.auto <- PCNM(uxy.d1)
 } else {
@@ -118,21 +118,10 @@ ukm.red <- u.PCNM.pos[,u.PCNM.sign[tstu$sig]]
 length(colnames(ukm.red))
 #44
 
-colnames(ux.env.redx) %in% colnames(u.env.redx)
 ukm <- rda(u.h.det, ukm.red, ux.env.redx)
 (RsquareAdj(ukm)$adj.r.squared)
 ukm.ax<- scores(ukm, choices=c(1,2), display="lc", scaling=1) ### the same as ua.red[,1:2]
 
-#require(spdep)
-#uenv4 <- data.frame(us_env09)
-#coord.uenv= uenv4[,c("x","y")]
-#coords = coordinates(coord.uenv)
-#nbg = graph2nb(relativeneigh(coords,nnmult=4),sym=T) #gabrielneigh(coords,nnmult=4)
-#plot(nbg,coords)
-#ttw <- nb2listw(nbg, style="B")
-# Construct matrix links.mat 
-#links.mat.dat <- listw2mat(ttw)
-#save(ukm.ax, ukm2.ax, ukx.ax, nbg, ttw, links.mat.dat, file='D:/R/tmp/ukm_ax_20161215.RData')
 ```
 
 ``` {r RDA_variation_partitioning (seedling), echo=TRUE}
@@ -227,6 +216,7 @@ while (length(tst_mdlk)>0 | tstn>10) {
 #### none!!!
 #[1] 2
 #integer(0)
+
 ```
 ``` {r Fig S1 plot function, echo=TRUE}
 library(ggplot2)
@@ -237,7 +227,7 @@ windowsFonts(sans=windowsFont("TT Arial"))
 
 
 baru <- rep(4,ncol(u.PCNM.red))  #"white"
-baru[setdiff(match(colnames(ua.red), colnames(u.PCNM.red)),match(colnames(ukm.red), colnames(u.PCNM.red)))] <- 3 #"grey85"
+baru[setdiff(match(colnames(ukm.red), colnames(u.PCNM.red)),match(colnames(ukm.red), colnames(u.PCNM.red)))] <- 3 #"grey85"
 baru[match(colnames(ukm.red), colnames(u.PCNM.red))] <- 1 #"grey35"
 baru[match(colnames(skm.red), colnames(u.PCNM.red))] <- 2 #"black"
 
@@ -336,7 +326,7 @@ vegan::showvarparts(2)
 plot(varu, digits=3) ## Fig. S1b, and "X2"(ukm.red) contributed 20.1% (Adj.R.squared) to understory variations
 ```
 ``` {r Neighborhood factors across forest strata in Table 1, echo=TRUE}
-library(packfor)
+#library(packfor)
 library(NanhsiDT)
 data("compo_us_sp09")
 data("us_env09")
@@ -430,6 +420,9 @@ sx.tre.red <- spselx[,sort(sx.tre.fwd$order)]#,with=F]
 colnames(sx.tre.red)
 sx.tre.fwd ## Basically, it's part of the result Table S1 in my paper (without sorting)
 
+# save intermediate results
+# save(xres.h, ush.h, xsdl.h, sdl.new, sdl_tst, tidxt, sx.env.red, uscov, tnc, ukm.red, ukm.ax, file="D:/R/01paper_ssn/simu_out/tmp_biofac_us.RData")
+
 ```
 ``` {r Venn diagram in Fig S2.c for variation in seedling assemblages, echo=TRUE}
 
@@ -441,9 +434,6 @@ plot(tt, digits=3)
   
 ```
 ``` {r Final output for Table 1, Table S1 using ztable, echo=TRUE}
-require(ztable)
-options(ztable.type="viewer") #"html"
-
 data(spdu) ## in NanhsiDT, taxonomic information of understory and seedling species 
 u.xy <- us_env09[,.(x,y)]
 spt.lst <- unique(spdu[,.(spcode, family)])
@@ -552,6 +542,11 @@ dtx2 <- rbind(dtx[1:10,],
 ## HTML version (Table 1, Table S1)
 ## require(ztable)
 
+```
+```{r, message = F,  results = 'asis'} 
+require(ztable)
+options(ztable.type="viewer") #"html" #"viewer"
+
 zt1 <- copy(dtx2) %>%
     setDF() %>%
     ztable(align="ccrlrlrlrlrl")
@@ -566,9 +561,9 @@ zt1 <- addrgroup(zt1,
                             ))
 
 zt1
-print(zt1)
+#print(zt1)
+``` 
 
-```
 ```{r End_of_file, echo=FALSE}
 
 closeAllConnections()
