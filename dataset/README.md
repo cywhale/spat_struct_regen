@@ -6,3 +6,13 @@ save intermeidate, time-consuming results of PCNM (MEMs) and forward-selection i
 
 tmp_biofac_us.RData
 sav intermediate (neighborhood) bio-factors in understory, from 01S_Tab1_spatialPCNM.rmd. (u.site: site name in transects and x,y-coordinates of understory sites, uscov: us cover data, tnc: tree BA and density, sx.env.red: significant topographic factors to variations in seedling assemblages; ukm.red, understory-plant spatial structure, ukm.ax, ukm.red projected on first RDA axis, partialling out topographic effects. xres.h, xsdl.h, sdl.new, ush.h: compositions of understory or seedlings, .h means hellinger transformed)
+
+**Constrained clustering results**
+
+> Because the R code cluster_constrain_patch01.R needs old version of R 2.15.3, so, if not want to re-run, jus loaded from here
+
+1. tmp_cluster_patch.RData: intermediate results of R objects from const.clust package. clus.uenv: clustering output, cross.clus: cross validation of clustering results
+
+2. const_clust_grp01.csv: site grouping according to clustering results. We'll use "grp.5" (5 groups for our understory sites)
+
+3. const_clust_AIC01.csv: cross validation results using AIC and CVRE (cross-validation residual error, help by ?cross in const.clust).
