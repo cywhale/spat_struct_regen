@@ -1,0 +1,314 @@
+---
+title: "Species distribution over graidents of topograpy and understory-plant spatial structure"
+author: "cywhale"
+date: "Nov, 2016"
+output: html_notebook
+---
+```{r variable settings, echo=TRUE}
+library(data.table)
+library(magrittr)
+library(NanhsiDT) # Functions and datasets used in Nanhis Forest Dynamics Plot.
+library(vegan)
+
+## Prepare data
+## Note: depend on outputs of 01S_Tab1_spatialPCNM.Rmd (if re-run, otherwise, load outputs from github)
+data(us_env09)
+data(compo_us_sp09)
+## load dataset, NOTE: Note that the https://URL may not work except on Windows? if not, just download the files
+## download.file(URL,"rdata"); load("rdata")
+load(url("https://github.com/cywhale/spat_struct_regen/raw/master/dataset/tmp_biofac_us.RData"))
+
+xres <- compo_us_sp09[-which(substr(tag,1,1)=="t" | (substr(tag,1,1)=="u" & lifeform=="T")),]
+xsdl <- compo_us_sp09[substr(tag,1,1)=="t",]
+
+## prepare seedling species
+ds0 <- xsdl %>%  ## ukm.ax: gradient of understory-plant spatial structure in 01S_Tab1_spatialPCNM.Rmd
+  merge(cbind(us_env09[,.(transect)],ukm.ax) %>% setnames(2:3,c("uRDA1","uRDA2")), by="transect", all.x=T)
+
+## prepare herb-layer species
+hs0 <- xres %>%
+  merge(cbind(us_env09[,.(transect)],ukm.ax) %>% setnames(2:3,c("uRDA1","uRDA2")), by="transect", all.x=T)
+
+################################## env gradient, do it in spatial_PCM_seedling01x.R
+senv.pc <- rda(scale(sx.env.red))
+cor(ukm.ax, senv.pc$CA$u) ## check orthogonality;
+
+senv.pc$CA$eig
+#PC1       PC2       PC3       PC4       PC5
+#1.5106427 1.1284427 0.9336278 0.7810034 0.6462834
+senv.pc$CA$eig/sum(senv.pc$CA$eig) #PC1 about 30% variations
+
+senv.pc$CA$v  #PC1 <- alt1,slope1,tcvex1,
+
+# data(spdt)  ## in NanhsiDT, taxonomic information of tree species 
+# Nsdl <- apply(sdl.new,2,sum)
+# (tidxt <- names(Nsdl[which(Nsdl>=20)])) ## select tree species of interest with seedling numbers > 20
+# Already done in 01S_Tab1_spatialPCNM.Rmd, and loaded in tmp_biofac_us.RData
+
+# sdl_tst <-c("Lauraceae","Fagaceae","Pentaphylacaceae","Adoxaceae")
+
+sdlsp.lst <- unique(ds0[,.(spcode,family)])
+(sdlsp_tst <- sdlsp.lst[spcode %in% tidxt,])
+length(unique(sdlsp_tst$family))
+
+ussp.lst <- unique(hs0[,.(spcode,family)])
+
+dst<- ds0 %>%
+  merge(cbind(us_env09[,.(transect)],senv.pc$CA$u[,1:2]) %>% setnames(2:3,c("env.PC1","env.PC2")), by="transect", all.x=T)
+
+h.us <- cbind(us_env09[,.(transect)], xres.h) %>%
+  melt(id.vars="transect", variable.name="spcode", value.name="coverh", variable.factor = FALSE) %>%
+  .[-which(coverh==0), ] %>%
+  merge(cbind(us_env09[,.(transect)],ukm.ax) %>% setnames(2:3,c("uRDA1","uRDA2")), by="transect", all.x=T) %>%
+  merge(cbind(us_env09[,.(transect)],senv.pc$CA$u[,1:2]) %>% setnames(2:3,c("env.PC1","env.PC2")), by="transect", all.x=T)
+
+```
+
+```{r bootstrap species distribution over gradients, echo=TRUE}
+require(boot)
+
+mean.fun <- function(x, idx)  mean(x[idx], na.rm = TRUE)
+#median.fun <- function(x, idx) median(x[idx], na.rm = TRUE)
+
+wmean.fun <- function(x, idx, ...) {
+  if (!exists("w")) {
+    w <- rep(1, length(x))
+  }
+  sum(w[idx]*x[idx],na.rm = TRUE)/sum(w[idx],na.rm = TRUE)
+}
+
+nidf <- data.frame(x=numeric(), y=numeric(),
+                   cixh=numeric(), cixl=numeric(),
+                   ciyh=numeric(), ciyl=numeric(),
+                   species= character(), genus=character(), family=character(),
+                   group = character())
+
+sp.lst <- tidxt
+
+for (i in 1:length(sp.lst)) {
+  sp <- dst[which(dst$spcode==sp.lst[i]),]
+
+    ub0 <- boot::boot(sp$uRDA1, mean.fun, R=9999, #, #median.fun,
+                      #w=sp$abund,
+                      parallel="multicore", ncpus = 6)
+    uu1 <- ub0[1]$t0
+    ciu1<- quantile(ub0$t, c(0.025, 0.975), na.rm=T)
+    ub1 <- boot::boot(sp$env.PC1, mean.fun, R=9999, #w=rep(1L, length(sp)), #median.fun,
+                      #w=sp$abund,
+                      parallel="multicore", ncpus = 6) 
+    ue1 <- ub1[1]$t0
+    cie1<- quantile(ub1$t, c(0.025, 0.975), na.rm=T)
+
+    nidf<- rbind(nidf,
+                 data.frame(x=uu1, y=ue1,
+                            cixh=ciu1[2], cixl=ciu1[1],
+                            ciyh=cie1[2], ciyl=cie1[1],
+                            species= sp.lst[i],
+                            genus = substr(sp.lst[i],1,4),
+                            family= sdlsp.lst$family[match(sp.lst[i],sdlsp.lst$spcode)],
+                            group = "Seedling"))
+}
+
+sp.lst <- colnames(ush.h)
+
+for (i in 1:length(sp.lst)) {
+  sp = h.us[which(spcode==sp.lst[i]),]
+
+  if (sp.lst[i] %in% colnames(sx.ush.red)) {
+    ub0 <- boot::boot(sp$uRDA1, mean.fun, R=9999, #w=sp$coverage, #median.fun,
+                      #w=sp$coverh,
+                      parallel="multicore", ncpus = 6)
+    uu1 <- ub0[1]$t0
+    ciu1<- quantile(ub0$t, c(0.025, 0.975), na.rm=T)
+    ub1 <- boot::boot(sp$env.PC1, mean.fun, R=9999, #w=sp$coverage, #median.fun,
+                      #w=sp$coverh,
+                      parallel="multicore", ncpus = 6) 
+    ue1 <- ub1[1]$t0
+    cie1<- quantile(ub1$t, c(0.025, 0.975), na.rm=T)
+
+    nidf<- rbind(nidf,
+                 data.frame(x=uu1, y=ue1,
+                            cixh=ciu1[2], cixl=ciu1[1],
+                            ciyh=cie1[2], ciyl=cie1[1],
+                            species=sp.lst[i],
+                            genus = substr(sp.lst[i],1,4),
+                            family= ussp.lst$family[match(sp.lst[i],ussp.lst$spcode)],
+                            group = "Understory"))
+
+  }
+}
+### Mean distribution of seedling assemblages
+gub0 <- boot::boot(ukm.ax[,1], wmean.fun,
+                   w=rowSums(sdl.new),
+                   R=9999, parallel="multicore", ncpus = 6)
+gub1 <- boot::boot(senv.pc$CA$u[,1], wmean.fun,
+                   w=rowSums(sdl.new),
+                   R=9999, parallel="multicore", ncpus = 6)
+```
+```{r ggplot niche differentiation over the two gradients, echo=TRUE}
+library(ggplot2)
+library(ggrepel)
+
+nidf$species <- paste0(nidf$species)
+
+nidf %<>% setDT() %>%
+  .[,Assemblages:=ifelse(group=="Understory","Understory",
+                         ifelse(family %in% sdl_tst, as.character(family), "Seedling"))]
+
+nidf$Assemblages <- factor(nidf$Assemblages, levels=c("Understory", "Seedling", sdl_tst),
+                           labels=c("Understory", "Seedling", sdl_tst))
+
+windowsFonts(sans=windowsFont("TT Arial"))
+
+ni.plot=ggplot(aes(x = x, y = y),
+               data=nidf) +
+  labs(
+    x = "uRDA1",
+    y = "Topographic PC1"
+  ) +
+  theme_grey() +
+  geom_segment(aes(x= cixl, y=y, xend= cixh, yend=y,
+                   colour = group)) + 
+  geom_pointrange(aes(ymin= ciyl, ymax=ciyh,
+                      shape = Assemblages,
+                      colour= group), linetype='twodash') +
+  scale_shape_manual(values = c(17, 16, 0, 6, 7, 8)) +
+  geom_vline(xintercept=gub0[1]$t0, color="lightgrey")+
+  geom_hline(yintercept=gub1[1]$t0, color="lightgrey")+
+  geom_text_repel(aes(x = x,
+                      y = y,
+                      label = species, alpha=0.85,
+                      color = group
+  ), 
+  nudge_x = 0.0025, 
+  nudge_y = -0.001,
+  segment.color	= NA,
+  segment.size = 0,
+  family = "sans") +
+  scale_colour_manual(values=c("grey50", "grey10")) +
+  guides(colour=FALSE, alpha=FALSE) +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.text = element_text(size = 10, family = "sans"),
+    axis.line.x = element_line(colour = "black"),
+    axis.line.y = element_line(colour = "black"),
+    legend.key = element_rect(fill = "transparent", colour = "transparent"),
+    legend.text = element_text(size=9, family = "sans"),
+    legend.background = element_rect(fill = "transparent", colour = "transparent"), 
+    legend.justification=c(0,0), legend.position=c(0.1, 0.5),
+    panel.background = element_rect(fill="transparent",colour=NA) 
+  )
+
+ni.plot
+```
+```{r understory and seedling species diversity and seedling density over gradients for Fig2, echo=TRUE}
+library(grid)
+library(gridExtra)
+
+# understory and seedling species diversity and seedling density over gradients
+udiv0 <-  diversity(xres.h)
+qsp   <- rowSums(ifelse(xsdl.h>0,1,0)) #sx
+qdiv0 <- diversity(xsdl.h)
+qnum  <- rowSums(xsdl.h)
+
+# calculate Hill N1 diversity
+udiv <- exp(udiv0)
+sdiv <- exp(qdiv0) 
+usc0 <- 100*uscov$c_gndh/max(uscov$c_gndh) 
+
+# Read cluster results in cluster_constrain_patch01.R, for clustering of sites.
+newclus <- read.table(url('https://raw.githubusercontent.com/cywhale/spat_struct_regen/master/dataset/const_clust_grp01.csv'), header=T,na.string="",sep=",")
+
+ux <- order(ukm.ax[,1])
+uRDA1<- ukm.ax[ux,1]
+udiv <- udiv[ux]
+usc1 <- usc0[ux]
+sdiv <- sdiv[ux]
+sden <- qnum[ux]/4 ### 1 microsite = 4m-square
+nclus<- newclus$Gr.5[ux]
+
+## Plot Fig. 2
+annotfx1 <- function (xrng, xprop=0.5) {xrng[1]+xprop*diff(xrng)}
+
+g_legend<-function(a.gplot){
+  tmp <- ggplot_gtable(ggplot_build(a.gplot))
+  leg <- which(sapply(tmp$grobs, function(x) x$name) == "guide-box")
+  legend <- tmp$grobs[[leg]]
+  return(legend)
+  }
+
+mldt <- cbind(usc1,udiv,sdiv,sden,uRDA1,nclus) %>% data.frame()
+ylab<- c("High herb coverage (%)",
+         "Understory Hill N1 index",
+         "Seedling Hill N1 index",
+         "Seedling density (per square meter)")
+
+mldt$group<- factor(mldt$nclus,levels=c(1, 2, 3, 4, 5),
+                  labels=c("SSG1", "SSG2", "SSG3", "SSG4", "SSG5"))
+
+
+for (i in 1:length(ylab)) {
+  (assign(paste0("lm",i), lm(mldt[,i]~mldt$uRDA1)))
+  
+  #summary(lm1)
+  #(tt1 <- tidy(lm1))
+
+  assign(paste0("ml",i), ggplot(mldt, aes_string("uRDA1", colnames(mldt)[i])) +
+    geom_point(aes(shape=group, colour=group)) +
+    geom_smooth(method = "lm", se = FALSE) +
+    labs(
+        x = "uRDA1",
+        y = ylab[i]
+    ) +
+    theme_grey() +
+    scale_colour_manual(values=c("grey80", "grey70", "grey60", "grey40" ,"grey40")) +
+    scale_shape_manual(values = 1:5) +
+    guides(colour=FALSE, shape=FALSE) +
+    scale_x_continuous(limits = range(uRDA1)) +
+    scale_y_continuous(limits = range(mldt[,i])) +
+
+    annotate("text", x = annotfx1(range(uRDA1),0.01), y = annotfx1(range(mldt[,i]),0.99), 
+               label = paste0("(",tolower(letters[i]),")"),
+               fontface="bold", family = "sans") +
+      
+    annotate("text", x = annotfx1(range(uRDA1),0.55), y = annotfx1(range(mldt[,i]),0.975), 
+             label = paste0("Adjusted R-squared = ",signif(summary(get(paste0("lm",i)))$adj.r.squared, 2)),
+             fontface="bold", family = "sans") +
+    annotate("text", x = annotfx1(range(uRDA1),0.55), y = annotfx1(range(mldt[,i]),0.9), 
+               label = paste0("p-value ", ifelse(summary(get(paste0("lm",i)))$coef[2,4]<2.2e-16, "< 2.2e-16", 
+                                                 paste0("= ",signif(summary(get(paste0("lm",i)))$coef[2,4],2)))),
+               fontface="bold", family = "sans") +
+    theme(
+      panel.grid.major = element_blank(),#element_line(colour = "grey40"),
+      panel.grid.minor = element_blank(),
+      axis.text = element_text(size = 6, family = "sans"),
+      axis.line.x = element_line(colour = "black"),
+      axis.line.y = element_line(colour = "black"),
+      legend.key = element_rect(fill = "transparent", colour = "transparent"),
+      legend.text = element_text(size=6, family = "sans"), 
+      legend.background = element_rect(fill = "transparent", colour = "transparent"), 
+      panel.background = element_rect(fill = "transparent", colour = "transparent") 
+    )
+  )
+}
+
+leg1 <- g_legend(ml4 + guides(shape=guide_legend(title="Spatial-structuring groups (SSG)")))
+leg2 <- g_legend(ni.plot)
+lay1 <- rbind(c(1,1,2,2,3,3,4,4),
+              c(6,6,6,6,6,6,5,5),
+              c(6,6,6,6,6,6,7,7))
+```
+```{r Fig2 png output, echo=TRUE}
+## If want to manual edit, use Rstudio export pdf (landscape A4) and then loaded into inkscape, etc.
+png("Fig2.png", units="in", width=11.7, height=8.3, res=600)
+grid.arrange(ml1,ml2,ml3,ml4, leg1,
+             ni.plot+
+               theme(axis.line.x = element_line(colour = "black"),
+                     axis.line.y = element_line(colour = "black"),
+                     legend.position="none")+ 
+               annotate("text", x = annotfx1(range(c(nidf$x,nidf$cixh, nidf$cixl)),0.001),
+                                y = annotfx1(range(c(nidf$y,nidf$ciyh, nidf$ciyl)),0.999),
+                                label = paste0("(e)"),fontface="bold", family = "sans"), leg2, layout_matrix=lay1)
+dev.off()
+```
