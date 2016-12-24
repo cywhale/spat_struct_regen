@@ -31,6 +31,8 @@
 <a href="docs/Table1_S1.html">Demostration by ztable: Results of redundancy analysis (RDA) based on forward selection, showing significant factors (and their associated F-values) explaining spatial variations in seedling assemblages. (Table 1, Table S1)</a> 
   * Table S1: Understory high-herb species and adult tree species that were significant in explaining spatial variations of seedling assemblages and associated F-values.
 
+<a href="docs/01_terrainPlot.nb.html">Topographic factors and terrain plot of Nanhsi FDP (Fig. 1)</a> 
+
 <a href="docs/02_Fig2_niche_gradient.nb.html">Species distribution and community patterns over gradient of understory-plant spatial structure and topography (Fig. 2)</a> 
 
 <a href="docs/Fig2.png">Fig. 2</a> 
