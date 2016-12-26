@@ -7,6 +7,7 @@
 #' Parse scientific names to simplified form
 #'
 #' @param x A character vector of scentific names
+#' @param gsub_pat A list including elements of character vectors with c(pattern, replacement), used in gsub function.
 #' @param trim.cf_sp A boolean value to trim "cf." in scientific names which means confer species (default) or not
 #' @param pattern.var_sp A character string indicates abbreviation of variety of species, like "var."(default).
 #' @param trim.var_sp A boolean value to trim "var." and following words (usually means variety) in scientific names (see pattern.var_sp) or not (default).
@@ -16,11 +17,12 @@
 #' @param trim.spp_abbrev A boolean value to trim trailing "spp."/"sp." or not (default).
 #' @return A charcter vector of simplified scientific names
 #' @examples
-#' sciname_simplify(c("Aricidea sp. A", "Armandia cf. leptocirrus","Thalenessa spinosa asitica","Ablennes hians (Valenciennes; 1843)"), simplify_two=TRUE, trim.spp_abbrev=TRUE)
+#' gsub_pat <- list(c("\\[","\\("),c("\\]","\\)"),c("-",""))
+#' sciname_simplify(c("Aricidea sp. A", "Armandia cf. leptocirrus","Thalenessa spinosa asitica","Ablennes hians (Valenciennes; 1843)"), gsub_pat, simplify_two=TRUE, trim.spp_abbrev=TRUE)
 #' > [1] "Aricidea" "Armandia leptocirrus" "Thalenessa spinosa" "Ablennes hians"
 #' @rdname sciname_simplify
 #' @export
-sciname_simplify <- function (x,
+sciname_simplify <- function (x, gsub_pat=list(),
                               trim.cf_sp = TRUE,
                               pattern.var_sp = "var.", trim.var_sp = FALSE,
                               trim.auther_year_in_bracket = TRUE,
@@ -29,24 +31,38 @@ sciname_simplify <- function (x,
                               trim.spp_abbrev= FALSE) {
   if (length(x)==0) return(c())
   if (all(is.na(x))) return(rep(NA_character_, length(x)))
-
-  trimx <- gsub("^\\s+|\\s+$", "", gsub("\\s{1,}", " ", as.character(x)))
-
+  
+  if (length(gsub_pat)>0) {
+    x <- sapply(seq_along(x), 
+                function(i,pat,x) {
+                  gsubx <- function(pat, xi) {
+                    do.call('gsub', list(x=xi, pattern = pat[1], replacement = pat[2]))
+                  }
+                  Reduce(gsubx, pat, init=x[i], right=TRUE) 
+                }, pat=gsub_pat, x=x, simplify=TRUE)
+  }
+  
+  trimx <- gsub("^\\s+|\\s+$", "", gsub("\\s{1,}", " ", 
+                gsub("\\({1,}\\s{0,}","\\(", gsub("\\s{0,}\\){1,}","\\)",
+                gsub("\\(\\s{0,}","\\(", gsub("\\s{0,}\\)","\\)",as.character(x)))))))
+  
   if (trim.cf_sp) {
     trimx <- gsub("\\b(cf\\. )","",trimx)
   }
-
+  
   trimx <- gsub("\\sv{1}(?:\\.{0,}|ar{0,1}\\.{0,})\\s", paste0(" ",pattern.var_sp," "), trimx)
-
+  
   wlx <- nchar(trimx)+1
+  ## Find (Name in char, Number) pattern and location
+  wl  <- regexpr("\\(",paste0(trimx,"("))
+  wl1 <- regexpr("(?:\\s|\\spage\\s)[a-zA-Z0-9]+(?:;|\\))",trimx)  ### ex: "Phalacroma rotundatum Lachmann) Kofoid And Michener ]- "
+  wl1[wl1<0] <- nchar(trimx[which(wl1<0)])+1
+  wl2 <- regexpr("\\s{0,1}\\)",paste0(trimx,")"))
+  wl3 <- regexpr(paste0("\\s",pattern.var_sp, "(?:\\s{1}[a-zA-Z]+\\s{0,1})"),trimx)   ## ex: "Ceratium vultur var sumatranum Steeman Nielsen; 1934)"
+  wl3[wl3>0] <- wl3[wl3>0]+attributes(wl3)$match.length[wl3>0]
+  wl3[wl3<0] <- nchar(trimx[which(wl3<0)])+1
+  
   if (trim.auther_year_in_bracket) {
-    wl  <- regexpr("\\(",paste0(trimx,"("))
-    wl1 <- regexpr("(?:\\s|\\spage\\s)[a-zA-Z0-9]+(?:;|\\))",trimx)  ### ex: "Phalacroma rotundatum Lachmann) Kofoid And Michener ]- "
-    wl1[wl1<0] <- nchar(trimx[which(wl1<0)])+1
-    wl2 <- regexpr("\\s\\)",paste0(trimx," )"))
-    wl3 <- regexpr(paste0("\\s",pattern.var_sp, "(?:\\s{1}[a-zA-Z]+\\s{0,1})"),trimx)   ## ex: "Ceratium vultur var sumatranum Steeman Nielsen; 1934)"
-    wl3[wl3>0] <- wl3[wl3>0]+attributes(wl3)$match.length[wl3>0]
-    wl3[wl3<0] <- nchar(trimx[which(wl3<0)])+1
     wlx <- pmin(wl,wl1,wl2,wl3)
   }
   if (trim.var_sp) {
@@ -54,17 +70,20 @@ sciname_simplify <- function (x,
     wl4[wl4<0] <- nchar(trimx[which(wl4<0)])+1
     wlx <- pmin(wlx,wl4)
   }
-
+  
   trimx <- gsub("\\s+$", "", substr(trimx,1,wlx-1))
-
+  
   if (trim.dummy_num) {
-    #trimx<- gsub("^[^a-zA-Z]+|[^a-zA-Z]+$", "", trimx)
-    trimx <- gsub("^[^a-zA-Z]+|(?!\\.)[^a-zA-Z]+$","", trimx, perl=TRUE)
+    wlx <- nchar(trimx)+1
+    wl5  <- regexpr("(?:\\){1}\\s{0,}[0-9])",trimx)
+    trimx[wl5<0] <- gsub("^[^a-zA-Z]+|(?!\\.)[^a-zA-Z\\)]+$", "", trimx[wl5<0], perl=TRUE)
+    trimx[wl5>0] <- paste0(substr(trimx[wl5>0],1,wl5),
+                           gsub("^[^a-zA-Z]+|(?!\\.)[^a-zA-Z\\)]+$", "", substr(trimx[wl5>0],wl5+1,wlx[wl5>0]-1), perl=TRUE))
+    #trimx <- gsub("^[^a-zA-Z]+|(?!\\.)[^a-zA-Z]+$","", trimx, perl=TRUE)
   } else {
-    #trimx<- gsub("^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$", "", trimx)
-    trimx <- gsub("^[^a-zA-Z0-9]+|(?!\\.)[^a-zA-Z0-9]+$", "", trimx, perl=TRUE)
+    trimx <- gsub("^[^a-zA-Z]+|(?!\\.)[^a-zA-Z0-9\\)]+$","", trimx, perl=TRUE)
   }
-
+  
   # Tolower second word
   #wlx <- nchar(trimx)+1
   wl1 <- attributes(regexpr("^[a-zA-Z0-9\\.]+",trimx))$match.length
@@ -72,9 +91,9 @@ sciname_simplify <- function (x,
   wl2[wl2>0] <- wl2[wl2>0]+attributes(wl2)$match.length[wl2>0]-1
   #wl2[wl2<0] <- nchar(trimx[which(wl2<0)])+1
   wlx <- pmax(wl1,wl2)
-
+  
   trimx <- paste0(substr(trimx,1,wl1),tolower(substr(trimx,wl1+1,wlx)),substr(trimx,wlx+1,nchar(trimx)))
-
+  
   if (simplify_two) {
     if (trim.dummy_num) {
       #trimx<- gsub("^[^a-zA-Z]+|[^a-zA-Z]+$", "", trimx)
@@ -83,7 +102,7 @@ sciname_simplify <- function (x,
       trimx <- substr(trimx,1,wlx)
     }
   }
-
+  
   if (trim.spp_abbrev) {
     return(gsub("\\s{1,}", " ",gsub("\\s+$|\\.+$", "", gsub("\\b(sp\\.)|\\b(spp\\.)","",trimx))))
   } else {
@@ -115,9 +134,9 @@ ggplot_shared_axes <- function(..., elements = c('legend', 'title', 'yaxis', 'xa
 ) {
   #require(gtable)s
   plots <- list(...)
-
+  
   if (!'yaxis' %in% elements & length(specify_ylab_bycol)>0) {
-
+    
     plotx <- lapply(plots, function(x, elements = elements){
       if('legend' %in% elements) x <- x + theme(legend.position="none")
       if('title' %in% elements) x <- x + theme(plot.title = element_blank())
@@ -125,35 +144,35 @@ ggplot_shared_axes <- function(..., elements = c('legend', 'title', 'yaxis', 'xa
       #if('yaxis' %in% elements) x <- x + theme(axis.title.y = element_blank())
       x
     }, elements = elements)
-
+    
     #debug
     #print("Start handle plotx")
     #print(length(plotx))
-
+    
     for (i in 1:length(plotx)) {
       assign(paste0("g",i), ggplotGrob(plotx[[i]]))
       gx <- get(paste0("g",i))
       yax <- which(gx$layout$name=="ylab-l")
       pp <- c(subset(gx$layout, grepl("panel", gx$layout$name), se = t:r))
-
+      
       gx[["grobs"]][[yax]]$children[[1]]$label <- specify_ylab_bycol[1]
       ny <- gx$grobs[[yax]]
       cols <- sort(unique(pp$l))
-
+      
       if (length(cols)>=2) {
         for (j in 1:(length(cols)-1)) {
           # define y-axis labels
           ny$children[[1]]$label <- specify_ylab_bycol[j+1]
-
+          
           ### control b= max(pp$b) or min(pp$b), you can up/down the label
-
+          
           if (j==1) {
             assign(paste0("gx",i), gtable_add_cols(gx,gx$widths[gx$layout[yax, ]$l],pos = pp$l[j]))
           } else {
             assign(paste0("gx",i), gtable_add_cols(get(paste0("gx",i)),
                                                    gx$widths[gx$layout[yax, ]$l],pos = pp$l[j]))
           }
-
+          
           if (adj_ylab_pos) {
             assign(paste0("gx",i), gtable_add_grob(get(paste0("gx",i)),
                                                    textGrob(ny$children[[1]]$label, gp=ny$children[[1]]$gp,#gpar(fontsize=12))
@@ -173,7 +192,7 @@ ggplot_shared_axes <- function(..., elements = c('legend', 'title', 'yaxis', 'xa
                                                    b = min(pp$b), r = pp$l[j]+1,
                                                    clip = "off", name = paste0("ylab-",j+1)))
           }
-
+          
           ### renew pp
           pp <- c(subset(get(paste0("gx",i))$layout, grepl("panel", get(paste0("gx",i))$layout$name), se = t:r))
         }
@@ -184,12 +203,12 @@ ggplot_shared_axes <- function(..., elements = c('legend', 'title', 'yaxis', 'xa
       #grid.arrange(get(paste0("gx",i)))
     }
   }
-
+  
   #debug
   #print("Start handle plots")
   #print(i)
   g <- ggplotGrob(plots[[1]])$grobs
-
+  
   if('legend' %in% elements) {
     legend <- g[[which(sapply(g, function(x) x$name) == "guide-box")]]
     lwidth <- sum(legend$width)
@@ -209,7 +228,7 @@ ggplot_shared_axes <- function(..., elements = c('legend', 'title', 'yaxis', 'xa
     yaxis <- g[[grep("axis.title.y", sapply(g, function(x) x$name))]]
     ywidth <- sum(yaxis$width)
   }
-
+  
   plots <- lapply(plots, function(x, elements = elements){
     if('legend' %in% elements) x <- x + theme(legend.position="none")
     if('title' %in% elements) x <- x + theme(plot.title = element_blank())
@@ -217,12 +236,12 @@ ggplot_shared_axes <- function(..., elements = c('legend', 'title', 'yaxis', 'xa
     if('yaxis' %in% elements) x <- x + theme(axis.title.y = element_blank())
     x
   }, elements = elements)
-
-
+  
+  
   if (!'yaxis' %in% elements & length(specify_ylab_bycol)>0) {
     #print("Start arrangeGrob plotx")
     #print(length(plots))
-
+    
     if (byrow) {
       #plots <- do.call(arrangeGrob, c(lapply(paste0("gx",1:length(plots)),get), nrow = 1, padding=0))
       plots <- do.call(arrangeGrob, c(sapply(paste0("gx",1:length(plots)),get, envir=sys.frame(sys.parent(0)), simplify=FALSE), nrow = 1, padding=0))
@@ -233,15 +252,15 @@ ggplot_shared_axes <- function(..., elements = c('legend', 'title', 'yaxis', 'xa
   } else {
     #print("Start arrangeGrob plotx")
     #print(length(plots))
-
+    
     if (byrow) {
       plots <- do.call(arrangeGrob, c(plots, nrow = 1))
     } else {
       plots <- do.call(arrangeGrob, c(plots, ncol = 1))
     }
   }
-
-
+  
+  
   if('legend' %in% elements)
     plots <- arrangeGrob(plots, legend, nrow = 1, widths = grid::unit.c(unit(1, "npc") - lwidth, lwidth))
   if('yaxis' %in% elements)
