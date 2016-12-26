@@ -1,9 +1,5 @@
 # misc functions used in my Nanhsi-related papers
-############ Parsing scientific names utilities
-############ modified from word_pre_bracket, delete xxx; so that the scientific name can be more accurate
-############ change 'v' to 'var'
-############ sympplify_tw : take first two words
-############ 20160623 add : handle (cf. : confer speceies) and merged into odbapi.R
+
 #' Parse scientific names to simplified form
 #'
 #' @param x A character vector of scentific names
