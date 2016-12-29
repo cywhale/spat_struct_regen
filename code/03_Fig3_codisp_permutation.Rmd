@@ -137,6 +137,13 @@ for(j in colnames(sdl0)[-1]) {set(sdl0,j=j, value=ifelse(is.na(sdl0[[j]]),0,sdl0
 sdlx <- sdl0[,sdl.tst,with=F]
 ```
 ```{r Multi-cores codispersion analysis, echo=TRUE}
+## Note: time-consuming, need 1-2 days even on 8-cores computing!!
+## if no need to re-run, just download intermediate results from github
+#download.file("https://github.com/cywhale/spat_struct_regen/raw/master/dataset/tmp_codisp_out.RData.gz.001", "tmp_codisp_out.RData.gz.001")
+#download.file("https://github.com/cywhale/spat_struct_regen/raw/master/dataset/tmp_codisp_out.RData.gz.001", "tmp_codisp_out.RData.gz.002")
+
+#then decompress these multi-part gz files, load the RData in R, get R objects dxq, and sigt (in the following codes)
+
 ## Multi-cores assign tasks (split data)
 (Maxcores <- detectCores()) #[1] 8
 mcores   <- Maxcores ## NOTE: for this case, length(randidx)/mcores must be integer
@@ -156,6 +163,8 @@ for(m in 1:mcores) {
   }
   dtmx[[m]]$rsidx <- rsidx[,dtmx[[m]]$tstidx]
 }
+
+## Note: time-consuming, need 1-2 days even on 8-cores computing!!
 
 registerDoParallel(cores=mcores)
 cat("Parallel workers: ",getDoParWorkers())
@@ -227,6 +236,12 @@ print(tt1-tt)
 ```
 
 ``` {r codispersion function to interpolate and test significance, echo=TRUE}
+## if no need to re-run, just download intermediate results from github
+#download.file("https://github.com/cywhale/spat_struct_regen/raw/master/dataset/tmp_codisp_out.RData.gz.001", "tmp_codisp_out.RData.gz.001")
+#download.file("https://github.com/cywhale/spat_struct_regen/raw/master/dataset/tmp_codisp_out.RData.gz.001", "tmp_codisp_out.RData.gz.002")
+
+#then decompress these multi-part gz files, load the RData in R, get R objects dxq, and sigt (in the following codes)
+
 require(fields)
 require(akima)
 require(parallel)
@@ -451,7 +466,64 @@ g1 <- ggplot(dx,aes(x,y))+
   )
 
 ```
-```{r Fig3 codispersion plot, echo=TRUE}
+```{r Fig3 codispersion plot (color version), echo=TRUE}
 g1
 ```
+```{r Fig3 grayscale version functions, echo=TRUE}
+## Grayscale version ##
 
+dx[,zsym:=factor(ifelse(z==-1.1,"N_sig",ifelse(z<0,"Neg", ifelse(z>0,"Pos", "Zero"))))]
+
+g1g <- ggplot(dx,aes(x,y))+
+  facet_grid(cospn+type ~ sdl, labeller = labeller(type = gridt1labf, cospn = gridb1labf)) +
+  geom_tile(aes(fill=z)) + 
+  scale_fill_gradientn(colours=c(grey(29/32),grey(29/32),
+                                 grey((5:20)/32),"white",
+                                 rev(grey((5:20)/32))),
+                       values=scales::rescale(
+                         c(-1.1,-0.51,
+                           seq(-0.5,-0.001,length.out=16),0,seq(0.001,0.5,length.out=16))),
+                       breaks=
+                         c(-1.1,-0.51,
+                           seq(-0.5,-0.001,length.out=16),0,seq(0.001,0.5,length.out=16)),#),
+                       limits=c(-1.1,0.5), na.value = "white",
+                       labels=c("NS","",
+                                "-0.5", rep("",8),-0.2,rep("",6),"0",
+                                rep("",6),"0.2",rep("",8),"0.5")) +
+  geom_point(aes(x,y+0.5,shape=zsym)) +
+  scale_shape_manual(values=c(NA, 45, NA, NA)) +
+  coord_fixed(ratio=1)+
+  geom_text(aes(x, y, label=labt), data=cospvars,
+            color = "black", size=2.5, 
+            family = "sans",hjust=0) +
+  xlab(NULL)+ylab(NULL) +
+  guides(alpha=FALSE, shape=FALSE, colour=FALSE,
+         fill= guide_colorbar(ticks = FALSE, title="Codispersion coefficient",label=T, raster=F,
+                              barwidth=15, barheight = 0.5, title.hjust=-3, title.vjust=1.25)) +
+  theme_grey()+
+  scale_x_continuous(breaks=c(-100,-50,0,50, 100)) +
+  theme(
+    panel.grid.minor = element_blank(),
+    axis.text = element_text(family = "sans", size=8), 
+    axis.text.x = element_text(family = "sans", size=8 ,margin = margin(t = 0)),
+    axis.title.x = element_text(family = "sans",margin = margin(t = 0), vjust=-0.2, hjust=0.1, size=10),
+    axis.title.y = element_text(family = "sans",size=10), 
+    axis.line.x = element_line(colour = "black"),
+    axis.line.y = element_line(colour = "black"),
+    strip.text.x = element_text(family = "sans", size=8, face="bold"),
+    strip.text.y = element_text(family = "sans", size=8),
+    legend.key = element_rect(fill = "transparent", colour = "transparent"),
+    legend.text = element_text(family = "sans"), 
+    legend.background = element_rect(fill = "transparent", colour = "transparent"), 
+    legend.position = "bottom",
+    panel.background = element_rect(fill="transparent",colour=NA))  
+
+#grid.newpage()
+#g <- arrangeGrob(g1g, bottom = textGrob("Negative values with -", x = 0.68, hjust = 0, vjust=-5.5,
+#                                        gp = gpar(fontfamily = "sans", fontsize = 8)))
+#grid.draw(g)
+
+```
+```{r Fig3 grayscale version, echo=TRUE}
+g1g
+```
