@@ -40,3 +40,10 @@
 <a href="docs/03_Fig3_codisp_permutation.nb.html">Codispersion verified how seedlings covaried with adults and understory neighbors (Fig. 3)</a> 
 
 <a href="docs/Fig3.png">Fig. 3</a> 
+
+<a href="docs/04_Fig4_community_diff_patch.nb.html">Comparisons of seedling density and Hill’s N1 diversity index among regeneration patches (Fig. 4)</a> 
+
+<a href="docs/Fig4.png">Fig. 4</a> 
+95% confidence intervals generated from null model of torus permutation (upper part) and complete randomization (lower part)  
+
+
