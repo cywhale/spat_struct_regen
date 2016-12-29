@@ -37,6 +37,6 @@
 
 <a href="docs/Fig2.png">Fig. 2</a> 
 
-<a href="docs/03_Fig3_codisp_permutation.nb.html">	Codispersion verified how seedlings covaried with adults and understory neighbors (Fig. 3)</a> 
+<a href="docs/03_Fig3_codisp_permutation.nb.html">Codispersion verified how seedlings covaried with adults and understory neighbors (Fig. 3)</a> 
 
-<a href="docs/Fig3.png">Fig. 2</a> 
+<a href="docs/Fig3.png">Fig. 3</a> 
