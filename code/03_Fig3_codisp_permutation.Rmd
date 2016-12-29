@@ -17,6 +17,11 @@ library(sp)
 library(geoR)
 library(spatstat)
 
+if (!file.exists("NanhsiDT_miscfunc01.R")) {
+  download.file("https://raw.githubusercontent.com/cywhale/spat_struct_regen/master/code/NanhsiDT_miscfunc01.R",  "NanhsiDT_miscfunc01.R")
+}
+source("NanhsiDT_miscfunc01.R")
+
 ltcomb <- function(...) { sapply(names(list(...)[[1]]), function(E) {
   do.call(cbind,
           lapply(list(...), function(X) {
