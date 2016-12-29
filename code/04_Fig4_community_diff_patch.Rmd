@@ -1,0 +1,240 @@
+---
+title: "Compare community structure among regeneration patches by toroidal and complete permutation"
+author: "cywhale"
+date: "Nov, 2016"
+output: html_notebook
+---
+
+```{r functions and variables used, echo=TRUE}
+library(data.table)
+library(magrittr)
+library(foreach)
+library(doParallel)
+library(NanhsiDT)
+
+## Functions
+if (!file.exists("NanhsiDT_miscfunc01.R")) {
+  download.file("https://raw.githubusercontent.com/cywhale/spat_struct_regen/master/code/NanhsiDT_miscfunc01.R",  "NanhsiDT_miscfunc01.R")
+}
+source("NanhsiDT_miscfunc01.R")
+
+dtcomb <- function(...) {
+  rbindlist(list(...))
+}
+
+## compute number and area of each cluster
+## Nq = total sites, AREA = area of one quadrat (m2)
+clusterDT_size <- function (cluster,AREA=4) {
+
+  return(data.table(cluster) %>% .[,.N, by=cluster] %>% .[,area:=AREA*N] %>% 
+    setnames(2,"num"))
+}
+
+## Global Variables ##
+xblk<- 10L  ## 10 blocks/transects in x-axis
+ycell<-100L ## 200 m /2m grid = 100 cells/subplots/grids
+L   <- xblk*ycell    # total numbers of subplots, could be serially indexed
+B   <- 4*L  ## 4 toridal-shift types
+sdlH<- 30   ## seedling height < sdlH is new seedlings (recruits), otherwise older seedlings
+
+randidx <- matrix(0,nrow=L,ncol=B*2) ## 4000 times toridal-shift, then 4000 times randomization maps
+
+## Original index keep in randidx[,1] in torusM_idx(), so would not keep twice in shuffleM_idx()
+randidx[1:L,1:B] <- torusM_idx(xblk=10L, ycell=100L)
+randidx[1:L,(B+1):(B*2)] <-shuffleM_idx(c(1:L), B, seed = 123L, keep_origin = FALSE, index_only = FALSE)
+
+### for null quadrat 
+data(us_env09)      ## in NanhsiDT dataset for basic env
+data(compo_us_sp09) ## in NanhsiDT dataset for understory composition
+
+env0 <- rbindlist(list(us_env09[,.(transect,x,y)],
+                      data.table(transect=c("06_044","09_019","09_022","12_001","18_042","30_034"),
+                                 x=c(60,  90, 90,120,180,300),
+                                 y=c(346,296,302,260,342,326)))) %>% setkey(transect) %>% setorder(x,y)
+
+usx <- merge(compo_us_sp09,env0,by="transect",all.x=TRUE)
+
+# Read cluster results in cluster_constrain_patch01.R, for clustering of sites.
+newclus <- read.table(url('https://raw.githubusercontent.com/cywhale/spat_struct_regen/master/dataset/const_clust_grp01.csv'), header=T,na.string="",sep=",")
+
+clusT <- newclus$Gr.5 
+nlvl<- length(unique(clusT))
+envclus <- us_env09 %>% .[,cluster:=clusT] %>% .[,.(transect,cluster)]
+
+(Nqv <- clusterDT_size(clusT,AREA=4))
+
+ntreat = 3*2 + 1 ## '+1' means herb taken as a whole and only do HillN1,  but seedling split into three class and evaluate density and HillN1 (3*2)
+
+print("Torus start..")
+tt <- Sys.time()
+print(format(tt, "%Y%m%d %H:%M:%S"))
+
+## Note: time-consuming steps may take hours
+## if no need for re-run, just load intermediate results from github (get R object "dxp"", in the following codes)
+## load(url("https://github.com/cywhale/spat_struct_regen/raw/master/dataset/tmp_biofac_us.RData"))
+
+## Parallel version
+
+(Maxcores <- detectCores())
+#[1] 8
+mcores   <- Maxcores #### NOTE: for this case, length(randidx)/mcores must be integer
+
+stopifnot(B %% mcores ==0)
+
+split_sz <- as.integer(B*2/mcores)
+
+registerDoParallel(cores=mcores)
+cat("Parallel workers: ",getDoParWorkers())
+
+dxp = foreach(m=1:mcores, .packages=c("data.table", "NanhsiDT", "magrittr"), .combine="dtcomb",
+              .inorder=T, .multicombine=T, .verbose=T) %dopar% {
+
+        tstidx <- ((m-1)*split_sz+1):min(m*split_sz,dim(randidx)[2])
+        dx = matrix(0,nrow=length(tstidx)*nlvl*ntreat,ncol=5)
+
+        for (i in 1:length(tstidx)) {
+          envt <- copy(env0) %>% .[,transect:=transect[randidx[,tstidx[i]]]]
+
+          allt <- merge(usx[,-1,with=F],envt,by=c("x","y"),all.x=TRUE) ##Notice: only shuffle "transect"_index, but "x","y" remain the same!!
+          allt %<>% .[!(transect %in% c("06_044","09_019","09_022","12_001","18_042","30_034")),] %>%
+            merge(envclus, by="transect")
+
+          ## seedling density
+          dx[((i-1)*nlvl*ntreat+1):((i-1)*nlvl*ntreat+nlvl*3),] <- as.matrix(rbindlist(list(
+            allt[substr(tag,1,1)=="t",] %>% .[,.N,by=cluster] %>% setkey(cluster) %>% .[Nqv] %>% .[,val:=N/area] %>% .[,.(cluster,val)] %>% .[,labt:=1][,class:=1][pat:=ifelse(tstidx[i]==1, 0L, ifelse(tstidx[i]>B, 2L, 1L))], ## density of all seedlings
+            allt[substr(tag,1,1)=="t" & height<sdlH,]  %>% .[,.N,by=cluster] %>% setkey(cluster) %>% .[Nqv] %>% .[,val:=N/area] %>% .[,.(cluster,val)] %>% .[,labt:=1][,class:=2][pat:=ifelse(tstidx[i]==1, 0L, ifelse(tstidx[i]>B, 2L, 1L))], ## density of recruit, sdl height< 30cm
+            allt[substr(tag,1,1)=="t" & height>=sdlH,] %>% .[,.N,by=cluster] %>% setkey(cluster) %>% .[Nqv] %>% .[,val:=N/area] %>% .[,.(cluster,val)] %>% .[,labt:=1][,class:=3][pat:=ifelse(tstidx[i]==1, 0L, ifelse(tstidx[i]>B, 2L, 1L))]  ## density of older sdl, height>= 30cm
+          )))
+
+          dx[((i-1)*nlvl*ntreat+1+nlvl*3):((i-1)*nlvl*ntreat+nlvl*6),] <- as.matrix(
+            rbindlist(list(allt[substr(tag,1,1)=="t",] %>% .[,.N, by=.(cluster,spcode)] %>% setkey(cluster) %>% .[Nqv] %>% .[,val:=N/area][class:=1] %>% .[,.(cluster,spcode,val,class)],
+                           allt[substr(tag,1,1)=="t" & height<sdlH,]  %>% .[,.N, by=.(cluster,spcode)] %>% setkey(cluster) %>% .[Nqv] %>% .[,val:=N/area][class:=2] %>% .[,.(cluster,spcode,val,class)],
+                           allt[substr(tag,1,1)=="t" & height>=sdlH,] %>% .[,.N, by=.(cluster,spcode)] %>% setkey(cluster) %>% .[Nqv] %>% .[,val:=N/area][class:=3] %>% .[,.(cluster,spcode,val,class)])) %>%
+              dcast(class + cluster ~ spcode, fill = 0, value.var = "val", sep="") %>%
+              .[,val:=vsp_dividx(.[,-c(1:2),with=F],index="HillN1")][,labt:=2][pat:=ifelse(tstidx[i]==1, 0L, ifelse(tstidx[i]>B, 2L, 1L))] %>%
+              .[,.(cluster,val,labt,class,pat)]
+          )
+
+          dx[((i-1)*nlvl*ntreat+1+nlvl*6):((i-1)*nlvl*ntreat+nlvl*7),] <- as.matrix(
+            allt[substr(tag,1,1)!="t" & !(substr(tag,1,1)=="u" & lifeform=="T"), ] %>% .[,.(transect,spcode,coverage)] %>%
+              .[,.(spcov=sum(coverage)),by=.(transect,spcode)] %>%
+              dcast(transect ~ spcode, fill = 0, value.var = 'spcov') %>%
+              .[,c(names(.)[2:ncol(.)]):=lapply(1:(ncol(.)-1), function(i) sweepM_rsum(as.matrix(.[,-1,with=FALSE]))[,i])] %>%
+              merge(envclus, by="transect") %>% setkey(cluster) %>%
+              .[, lapply(.SD, sum), by=cluster, .SDcols=c(2:(ncol(.)-1))] %>%
+              .[Nqv, lapply(.SD, `/`,area), by=.EACHI, .SDcols=c(2:ncol(.))] %>%
+              .[,val:=vsp_dividx(.[,-1,with=F],index="HillN1")][,labt:=3][,class:=4][pat:=ifelse(tstidx[i]==1, 0L, ifelse(tstidx[i]>B, 2L, 1L))] %>%
+              .[,.(cluster,val,labt,class,pat)]
+          )
+        }
+
+        dx %<>% data.table() %>% setnames(1:5,c("cluster","value","labt","class","pat"))
+
+        dx
+      }
+
+
+#stopImplicitCluster()
+
+print("Torus End..")
+tt1 <- Sys.time()
+print(format(tt1, "%Y%m%d %H:%M:%S"))
+print(tt1-tt) #Time difference of 1.469642 hours
+
+## on win 8, 16G one-core 4000 index: Time difference of 2.608028 hours ################
+## on win 7, odb one core 4000 index: Time difference of 5.254826 hours ################
+## on win 8, 16G 8-core 8000 index:   Time difference of 1.38808 hours  ################
+
+#save(dxp, file="D:/R/01paper_ssn/simu_out/tmp_patch_permutation.RData")
+
+```
+```{r plot functions for compare differences among regeneration patches, echo=F}
+library(ggplot2)
+require(grid)
+require(gridExtra)
+require(gtable)
+
+dt <- copy(dxp)
+
+d0 <- dt[pat==0,]; d0[,pat:=NULL]
+dt %<>% .[pat>0,]
+
+dt$patx <- factor(dt$pat,levels=c(1, 2), 
+                         labels=c("Torus permutation", "Randomization"))
+dt$labt<- factor(dt$labt,levels=c(1, 2, 3), 
+                         labels=c("Seedling density", "Seedling Hill's N1 index", "Understory Hill's N1 index"))
+d0$labt<- factor(d0$labt,levels=c(1, 2, 3), 
+                         labels=c("Seedling density", "Seedling Hill's N1 index", "Understory Hill's N1 index"))
+dt$class<- factor(dt$class,levels=c(1, 2, 3, 4), 
+                           labels=c("All Seedlings", "New recruits", "Older seedlings", "Understory"))
+d0$class<- factor(d0$class,levels=c(1, 2, 3, 4), 
+                           labels=c("All Seedlings", "New recruits", "Older seedlings", "Understory"))
+
+quanfun <- function(x) {
+  #res <- quantile(x,probs=c(0.025,0.5,0.975))
+  #names(res)<-c("ymin","y","ymax")
+  res <- quantile(x,probs=c(0.025,0.975))
+  names(res)<-c("ymin","ymax")
+  res}
+
+g1xlab <- list("(a) Seedling density", "(b) Seedling species diversity", "(c) Understory species diversity")
+g2xlab <- list("(d) Seedling density", "(e) Seedling species diversity", "(f) Understory species diversity")
+
+facetlabf1 <- function(variable,value){
+  return(g1xlab[value])
+}
+
+facetlabf2 <- function(variable,value){
+  return(g2xlab[value])
+}
+
+windowsFonts(sans=windowsFont("TT Arial"))
+
+
+for (i in 1:2) {
+  assign(paste0("g",i,"x"), 
+         ggplot(dt[pat==i,],
+                aes(x=factor(cluster), y=value), color=class) +
+    
+    facet_wrap(~ labt, scales="free_y", labeller = get(paste0("facetlabf",i))) +
+    labs(x = "Spatial-structuring groups (SSG)") +
+    theme_grey() +
+    scale_colour_manual(values=c("grey60","grey35", "grey10", "grey10")) +
+    stat_summary(fun.data = quanfun, #fun.y = median, fun.ymin = quan_y05, fun.ymax = quan_y95,
+                 geom="linerange",#size=0.15,
+                 aes(color= class,
+                     x=ifelse(class=="New recruits", cluster,
+                       ifelse(class=="All Seedlings",  cluster-0.125, cluster+0.125)))) +
+  scale_shape_manual(values=c(16,4,3,17)) +
+    geom_point(data=d0,
+               aes(x=ifelse(class=="New recruits", cluster,
+                     ifelse(class=="All Seedlings",  cluster-0.125, cluster+0.125)), 
+                   y=value,
+                   shape= class), colour="black") +
+    guides(colour=FALSE, alpha=FALSE, shape=guide_legend(title="Assemblages")) +
+    theme(
+      panel.grid.major = element_blank(), 
+      panel.grid.minor = element_blank(),
+      strip.background = element_blank(),
+      axis.text = element_text(family = "sans", size = 8),
+      axis.title.x = element_text(family = "sans", size=8),
+      axis.title.y = element_text(family = "sans", size=8, margin(r=0),vjust=0.6), 
+      axis.line.x = element_line(colour = "black"),
+      axis.line.y = element_line(colour = "black"),
+      legend.text = element_text(size=11), 
+      legend.background = element_rect(fill = "white"),
+      panel.background = element_rect(fill = NA, color = "grey40")
+    ) 
+  )
+}
+```
+``` {r Fig4 in my paper, echo=T}
+gt <- 
+  ggplot_shared_axes(g1x, g2x, elements = c('legend','titile', 'xaxis'), 
+                     specify_ylab_bycol= c(expression(Density~(stems/m^{2})),  
+                                           "Hill's N1 index", "Hill's N1 index"),
+                     byrow=F, plot=F,adj_ylab_pos = T) 
+
+grid.arrange(gt)
+
+```
