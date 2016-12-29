@@ -1,0 +1,457 @@
+---
+title: "Codispersion analysis for seedlings/adults and seedlings/understory high herbs"
+author: "cywhale"
+date: "Nov, 2016"
+output: html_notebook
+---
+
+```{r codispersion functions, echo=FALSE, message=FALSE}
+## modified code from ## Vallejos, R., Osorio, F., and Mancilla, D. (2015) 
+## The codispersion map: a graphical tool to visualize the association between two spatial variables.
+## Statistica Neerlandica, 69: 298–314. doi: 10.1111/stan.12060.
+library(data.table)
+library(magrittr)
+library(foreach)
+library(doParallel)
+library(sp)
+library(geoR)
+library(spatstat)
+
+ltcomb <- function(...) { sapply(names(list(...)[[1]]), function(E) {
+  do.call(cbind,
+          lapply(list(...), function(X) {
+            X[[E]]
+          }))
+  }, simplify=FALSE)
+}
+
+codispx <- function(idx, x, y, coords, nlags=10, yeach=FALSE) {
+  require("geoR")
+  x <- unlist(x[,idx,with=F],use.names = F)
+  if (!yeach) {
+    y <- unlist(y[,idx,with=F],use.names = F)
+  }
+
+  rhof <- function(angle, x, y, z, uvec, max.dist)
+  {
+    nz <- variog(z, uvec = uvec, max.dist = max.dist,
+                 direction = angle, messages = FALSE)
+    dx <- variog(x, uvec = uvec, max.dist = max.dist,
+                 direction = angle, messages = FALSE)
+    dy <- variog(y, uvec = uvec, max.dist = max.dist,
+                 direction = angle, messages = FALSE)
+    zv <- rep(NA_real_, length(uvec)); zv[nz$ind.bin] <- nz$v # detect NA
+    xv <- rep(NA_real_, length(uvec)); xv[dx$ind.bin] <- dx$v
+    yv <- rep(NA_real_, length(uvec)); yv[dy$ind.bin] <- dy$v
+
+    return (.5 * (zv - xv - yv) / sqrt(xv * yv))
+  }
+
+  dmax <- .5 * max(dist(coords))
+  angles <- seq(from = 0, to = pi, by = 0.01)
+  nangles <- length(angles)
+
+  uvec <- seq(from = 0, to = dmax, length = nlags+1)[-1]
+  zt <- as.geodata(cbind(coords, x+y))  #allow NA, but NA remains NA after x+y
+  xt <- as.geodata(cbind(coords, x))
+  yt <- as.geodata(cbind(coords, y))
+
+  z <- as.vector(t(sapply(angles, rhof, x=xt, y=yt, z=zt, uvec = uvec, max.dist = dmax, simplify = TRUE)))
+
+  return(z) 
+}
+
+```
+```{r Global Variables setting, echo=FALSE, message=FALSE}
+library(NanhsiDT)
+library(vegan)
+load(url("https://github.com/cywhale/spat_struct_regen/raw/master/dataset/tmp_biofac_us.RData"))
+
+## pairs of species to test codispersion
+elems <- c("litsac_litsac","machsp_machja",
+    "castcu_castcu",
+    "euryle_euryle",
+    "vibuta_vibuta",
+    "litsac_miscsi",
+    "litsac_caresp",
+    "machsp_miscsi",
+    "machsp_caresp",
+    "castcu_dryofo","castcu_caresp",
+    "euryle_aracrh","euryle_dryofo",
+    "vibuta_polypa","vibuta_caresp"
+  )
+
+tree.tst<- c("litsac","machja","castcu","euryle","vibuta")
+sdl.tst <- c("litsac","machsp","castcu","euryle","vibuta")
+res.tst <- c("miscsi","dryofo","caresp","aracrh","polypa")#,"urtith")
+
+xblk <- 10L  ## 10 blocks/transects in x-axis
+ycell<-100L  ## 200 m /2m grid = 100 cells/subplots/grids
+L <- xblk*ycell ## total numbers of subplots, could be serially indexed
+B <- 4*L   ## 4 toridal-shift types
+sdlH <- 30    ## seedling height < sdlH is new seedlings (recruits), otherwise older seedlings
+txblk <- 35L
+tycell<- 24L ## 35*24 = 840
+(Lt <- txblk*tycell)
+(Bt <- 4*Lt)
+delst <- c("q_33_49", "q_34_48", "q_34_49")  ### tree quadrat not surveyed(Null subplot), 840-3=837 subplots
+Rwt <- 7.5  ## search range r = 7.5m, D=15m circle, to see if dispersal limitation within
+seed<- 123L ## fix seed to get reproducible results, can change to any other seed.
+
+## set fixed seed to get reproducible results in permutation
+randidx <- matrix(0,nrow=L,ncol=B*2) ## 4000 times toridal-shift, then 4000 times randomization maps
+
+randidx[1:L,1:B] <- torusM_idx(xblk=xblk, ycell=ycell)
+randidx[1:L,(B+1):(B*2)] <-shuffleM_idx(c(1:L), B, seed = seed, keep_origin = FALSE, index_only = FALSE)
+
+samplB <- 200 ## only take 200 random index from randidx(B) 
+
+set.seed(seed)
+tt <- sample(2:B,samplB-1, replace=F)
+tt1<- sample(1:B,samplB, replace=F)
+rsidx <- randidx[,c(1,sort(tt),B+sort(tt1))]
+
+tx <- ppp_NanhsiTree(seed=seed, B=samplB) 
+
+data(compo_us_sp09)
+data(us_env09)
+usite <- us_env09[,.(transect,x,y)]
+
+coords <- coordinates(usite[,.(x,y)])
+
+env0 <- rbindlist(list(usite,
+                       data.table(transect=c("06_044","09_019","09_022","12_001","18_042","30_034"),
+                                  x=c(60,  90, 90,120,180,300),
+                                  y=c(346,296,302,260,342,326)))) %>% setkey(transect) %>% setorder(x,y)
+#usx <- copy(compo_us_sp09)
+usx <- merge(compo_us_sp09,env0,by="transect",all.x=TRUE)
+
+xsdl <- usx[substr(tag,1,1)=="t",] 
+sdl0 <- xsdl[,.(transect,spcode)] %>% .[,abund:=1] %>%
+  dcast(transect~spcode,fun=sum,fill=0)
+
+sdl0 <- merge(sdl0, us_env09[,.(transect)], by="transect", all=T)
+
+for(j in colnames(sdl0)[-1]) {set(sdl0,j=j, value=ifelse(is.na(sdl0[[j]]),0,sdl0[[j]]))}
+
+sdlx <- sdl0[,sdl.tst,with=F]
+```
+```{r Multi-cores codispersion analysis, echo=TRUE}
+## Multi-cores assign tasks (split data)
+(Maxcores <- detectCores()) #[1] 8
+mcores   <- Maxcores ## NOTE: for this case, length(randidx)/mcores must be integer
+
+stopifnot(samplB %% mcores ==0)
+
+split_sz <- as.integer(samplB*2/mcores)
+
+dtmx <- vector("list", mcores)
+
+for(m in 1:mcores) {
+  dtmx[[m]]$tstidx <- ((m-1)*split_sz+1):min(m*split_sz,samplB*2)
+  if ((m-1)*split_sz>=samplB) {
+    dtmx[[m]]$tstree <- tx$random[c(dtmx[[m]]$tstidx-samplB)]
+  } else {
+    dtmx[[m]]$tstree <- tx$torus[dtmx[[m]]$tstidx]
+  }
+  dtmx[[m]]$rsidx <- rsidx[,dtmx[[m]]$tstidx]
+}
+
+registerDoParallel(cores=mcores)
+cat("Parallel workers: ",getDoParWorkers())
+
+print("Torus start..")
+tt <- Sys.time()
+print(format(tt, "%Y%m%d %H:%M:%S"))
+
+dxq  <- foreach(mx = dtmx, .packages=c("data.table", "magrittr", "geoR","vegan", "spatstat", "NanhsiDT"), .combine="ltcomb",
+               .inorder=T, .multicombine=T, .verbose=T) %dopar% {
+
+                dt <- vector("list",length=length(elems))
+
+                for (i in 1:length(mx$tstidx)) {
+## build shuffled us assmblages. Notice: only shuffle "transect"_index, but "x","y" remain the same!!
+                  resdt <- merge(usx[,-1,with=F],
+                                copy(env0) %>% .[,transect:=transect[mx$rsidx[,i]]],
+                                by=c("x","y"),all.x=TRUE) %>% 
+                          .[!(transect %in% c("06_044","09_019","09_022","12_001","18_042","30_034")),] %>%
+                    .[-union(which(substr(tag,1,1)=="t"),
+                             which(substr(tag,1,1)=="u" & lifeform=="T")), .(transect,spcode,coverage)] %>%
+                    dcast(transect~spcode,fun=sum,fill=0) %>%
+                    merge(usite[,.(transect)], by="transect", all=T)
+
+                  for(j in colnames(resdt)[-1]) {set(resdt,j=j, value=ifelse(is.na(resdt[[j]]),0,resdt[[j]]))}
+
+                  resdt %<>% .[,-1,with=F] %>% vegan::decostand("hellinger") %>% .[,res.tst]
+
+## build shuffled tree assmblages
+                  ttba <- cbind(usite[,.(transect)],
+                                pt_NanhsiBA(usite, taxon=tree.tst, taxon_rank="spcode", sppMatch=TRUE, 
+                                      data= data.table(x=mx$tstree[[i]]$x, y=mx$tstree[[i]]$y,
+                                                        spatstat::marks(mx$tstree[[i]])), rng=Rwt) 
+                              ) %>% setkey(transect) %>% .[,tree.tst,with=F]
+
+                  #dt <- vector("list",length=ncol(sdlx)+10)
+
+                  dt[1:ncol(sdlx)] <- lapply(1:ncol(sdlx), codispx, x=sdlx, y=ttba, coords=coords, nlags=10)
+                  dt[ncol(sdlx)+1] <- list(codispx(1,x=sdlx,y=resdt$miscsi,coords=coords,nlags=10, yeach=TRUE))
+                  dt[ncol(sdlx)+2] <- list(codispx(1,x=sdlx,y=resdt$caresp,coords=coords,nlags=10, yeach=TRUE))
+                  dt[ncol(sdlx)+3] <- list(codispx(2,x=sdlx,y=resdt$miscsi,coords=coords,nlags=10, yeach=TRUE))
+                  dt[ncol(sdlx)+4] <- list(codispx(2,x=sdlx,y=resdt$caresp,coords=coords,nlags=10, yeach=TRUE))
+                  dt[ncol(sdlx)+5] <- list(codispx(3,x=sdlx,y=resdt$dryofo,coords=coords,nlags=10, yeach=TRUE))
+                  dt[ncol(sdlx)+6] <- list(codispx(3,x=sdlx,y=resdt$caresp,coords=coords,nlags=10, yeach=TRUE))
+                  dt[ncol(sdlx)+7] <- list(codispx(4,x=sdlx,y=resdt$aracrh,coords=coords,nlags=10, yeach=TRUE))
+                  dt[ncol(sdlx)+8] <- list(codispx(4,x=sdlx,y=resdt$dryofo,coords=coords,nlags=10, yeach=TRUE))
+                  dt[ncol(sdlx)+9] <- list(codispx(5,x=sdlx,y=resdt$polypa,coords=coords,nlags=10, yeach=TRUE))
+                  dt[ncol(sdlx)+10]<- list(codispx(5,x=sdlx,y=resdt$caresp,coords=coords,nlags=10, yeach=TRUE))
+                  names(dt) <- elems
+
+                  if (i==1) {
+                    dti <- dt
+                  } else {
+                    dti <- ltcomb(dti,dt)
+                  }
+              }
+
+              return(dti)
+
+}
+#stopImplicitCluster()
+
+print("Torus End..")
+tt1 <- Sys.time()
+print(format(tt1, "%Y%m%d %H:%M:%S"))
+print(tt1-tt) 
+## Time difference of 1.928986 days, if samplB = 200! time-consuming steps
+
+```
+
+``` {r codispersion function to interpolate and test significance, echo=TRUE}
+require(fields)
+require(akima)
+require(parallel)
+
+################## x.dt for parallel combine, dt for your data
+codisp_sigf <- function(x,x.dt,dt,xc,yc,ncell=20,B=200) {
+  require(data.table)
+  require(magrittr)
+  interpf <- function(x,y,z, ncell=20) {
+    require(akima)
+    if (any(is.na(z))) {
+      dt <- akima::interp(x[-which(is.na(z))],
+                          y[-which(is.na(z))],
+                          z[-which(is.na(z))],
+                          xo = seq(min(x), max(x), length=ncell) ,
+                          yo = seq(min(y), max(y), length=ncell))
+    } else {
+      dt <- akima::interp(x,y,z,
+                          xo = seq(min(x), max(x), length=ncell) ,
+                          yo = seq(min(y), max(y), length=ncell))
+    }
+    return(data.table(expand.grid(x = dt$x, y = dt$y), z=c(dt$z)))
+  }
+
+  interpz <- function(idx,x,y,data,ncell=20) {
+    #require(akima)
+    z <- data[,idx]
+    if (any(is.na(z))) {
+      dt <- akima::interp(x[-which(is.na(z))],
+                          y[-which(is.na(z))],
+                          z[-which(is.na(z))],
+                          xo = seq(min(x), max(x), length=ncell) ,
+                          yo = seq(min(y), max(y), length=ncell))
+    } else {
+      dt <- akima::interp(x,y,z,
+                          xo = seq(min(x), max(x), length=ncell) ,
+                          yo = seq(min(y), max(y), length=ncell))
+    }
+
+    return(c(dt$z))
+  }
+
+  dx  <- dt[[x]]
+  obs <- matrix(dx[,1],ncol=1)
+  tor <- dx[,2:B]
+  ran <- dx[,(B+1):(B*2)]
+
+  dobs <- interpf(x=xc,y=yc,z=dx[,1],ncell)
+  dtor <- sapply(1:dim(tor)[2], interpz, x=xc,y=yc,data=tor, ncell, simplify="matrix")
+  dran <- sapply(1:dim(ran)[2], interpz, x=xc,y=yc,data=ran, ncell, simplify="matrix")
+
+  sigf <- function(x) { ## obs in the first elemenet
+    obs<- x[1]
+    qt <- quantile(x[-1],probs=c(0.025,0.975), na.rm=T)
+    if (is.na(obs) | (obs>=qt[1] & obs<=qt[2])) {
+      return(0L) ## NOT significant
+    } else {
+      return(1L)
+    }
+  }
+
+  tsig <- apply(cbind(dobs$z,dtor),1,sigf)
+  rsig <- apply(cbind(dobs$z,dran),1,sigf)
+  tmu  <- apply(dtor,1,mean, na.rm=T)
+  rmu  <- apply(dran,1,mean, na.rm=T)
+  tdif <- dobs$z-tmu; tdif[tsig==0L] <- -1.1
+  rdif <- dobs$z-rmu; rdif[rsig==0L] <- -1.1
+  coname <- strsplit(x,"_")
+  ot <-
+    rbind(data.table(dobs, sigf=1L, sdl=coname[[1]][1], cosp=coname[[1]][2], type="observe"),
+          data.table(dobs[,.(x,y)], z=tdif, sigf=tsig, sdl=coname[[1]][1], cosp=coname[[1]][2], type="torus"),
+          data.table(dobs[,.(x,y)], z=rdif, sigf=rsig, sdl=coname[[1]][1], cosp=coname[[1]][2], type="randf"))
+
+  x.dt <- rbindlist(list(x.dt, as.list(ot)))
+  return (x.dt)
+}
+
+
+nlags<- 10
+dmax <- .5 * max(dist(coords))
+angles <- seq(from = 0, to = pi, by = 0.01)
+nangles<- length(angles)
+
+uvec <- seq(from = 0, to = dmax, length = nlags+1)[-1]
+
+xcirc <- as.vector(sapply(seq_len(nlags),
+                          function(x) rev(seq(-uvec[x], uvec[x], length = nangles)),
+                          simplify = "array"))
+ycirc <- as.vector(sapply(seq_len(nlags),
+                          function(x) sqrt(uvec[x]^2 - xcirc[(nangles*(x-1)+1):(nangles*x)]^2),
+                          simplify = "array"))
+
+clus <- parallel::makeCluster(mcores)
+
+#clusterExport(clus,"x1", envir=environment())
+#clusterExport(clus,"data.table")
+
+x1<- data.table(x=numeric(), y=numeric(), z=numeric(), sigf=integer(),
+                sdl= character(), cosp= character(), type= character())
+
+sigt <- rbindlist(parallel::parLapply(clus,names(dxq),codisp_sigf,x.dt=x1, dt=dxq,xc=xcirc, yc=ycirc))
+
+on.exit(stopCluster(clus))
+
+# save intermediate results
+#save(dxq,sigt,
+#     file="D:/R/01paper_ssn/simu_out/tmp_codisp_out.RData")
+
+```
+
+```{r Fig3 codispersion plot functions, echo=TRUE}
+library(ggplot2)
+windowsFonts(sans=windowsFont("TT Arial"))
+
+dx <- copy(sigt)
+
+dx[,cospn:=as.character(factor(cosp,
+                  levels=unique(cosp)[c(
+                    match(substr(sdl,1,4),substr(unique(cosp),1,4))[1],
+                          setdiff(1:length(unique(cosp)),
+                                  match(substr(sdl,1,4),substr(unique(cosp),1,4))[1])
+                    )],
+                  labels=1:length(unique(cosp)))), by=.(sdl)]
+dx$cospn <- factor(dx$cospn)
+
+xscin <- sciname_simplify(spdu[match(sdl.tst, spdu$spcode)]$sciname, simplify_two = T)
+
+dx$sdl <- factor(dx$sdl, levels=sdl.tst, labels=xscin)
+
+dx$type <- factor(dx$type,levels=c("torus", "observe", "randf"),
+                  labels=c("Toroidal shift","Observed values","Random shuffle"))
+
+g1labt <- list("Torus","Observed","Complete","Torus","Observed","Complete","Torus","Observed","Complete")
+g1labb <- list("permutation","values","randomization",
+               "permutation","values","randomization",
+               "permutation","values","randomization")
+
+gridt1labf <- function(variable,value){
+  return(g1labt[value])
+}
+gridb1labf <- function(variable,value){
+  return(g1labb[value])
+}
+
+annotfx1 <- function (xrng, xprop=0.5) {xrng[1]+xprop*diff(xrng)} #code the same in spatial_uRDA_eRDA_distrib01x.R
+
+cosplabl <- length(levels(dx$sdl)) *  length(levels(dx$cospn)) * length(levels(dx$type))
+
+tt1 <- data.table(expand.grid(levels(dx$type), levels(dx$cospn))) %>%
+  setnames(1:2,c("type","cospn")) %>%
+  .[,vart:=paste(type,cospn,sep="-")]
+
+tt1$vart <- factor(tt1$vart)
+
+cospvars <- data.table(expand.grid(levels(dx$sdl), levels(tt1$vart))) %>%
+  setnames(1:2,c("sdl","vart")) %>%
+  merge(tt1,by="vart",all.x=T)
+
+cospvars$sdl <- as.character(cospvars$sdl)
+cospvars$cospn <- as.integer(cospvars$cospn)
+cospvars <- data.table(x = rep(annotfx1(range(dx$x),0.05), cosplabl),
+                       y = rep(annotfx1(range(dx$y),0.92), cosplabl), cospvars)
+
+cospvars %<>% merge(unique(dx[,.(sdl,cospn,cosp)]) %>% .[,cospn:=as.integer(cospn)], by=c("sdl","cospn"), all.x=T)
+
+cospvars[,sdl_n:=match(as.character(cospvars$sdl),sciname_simplify(spdu[match(sdl.tst, spdu$spcode)]$sciname, simplify_two = T))]
+
+setorder(cospvars,cospn,sdl_n)
+
+cospvars[,c("fig_a","fig_n"):=list(
+  letters[order(as.integer(paste0(cospn,sdl_n)))],
+  match(as.character(type),c("Toroidal shift","Observed values","Random shuffle"))),
+  by=.(type)]
+
+
+spt <- sciname_simplify(spdu[match(cospvars$cosp, spdu$spcode)]$sciname, simplify_two = T)
+
+cospvars[,labt:=ifelse(as.character(type)=="Toroidal shift",
+                       paste0("(",fig_a,fig_n,") versus\n",spt),
+                       paste0("(",fig_a,fig_n,")"))]
+
+cospvars[as.character(type)=="Toroidal shift",y:=annotfx1(range(dx$y),0.84)]
+
+
+g1 <- ggplot(dx,aes(x,y))+
+  facet_grid(cospn+type ~ sdl, labeller = labeller(type = gridt1labf, cospn = gridb1labf)) +
+  geom_tile(aes(fill=z)) + 
+  scale_fill_gradientn(colours=c("grey50","#000000FF",colorRamps::blue2red(32)[2:17],"white",
+                             colorRamps::blue2red(32)[18:31]),
+                       values=scales::rescale(
+                           c(-1.1,-0.75,
+                             seq(-0.5,-0.001,length.out=16),0,seq(0.001,0.5,length.out=16))),
+                       breaks=
+                            c(-1.1,-0.75,
+                              seq(-0.5,-0.001,length.out=16),0,seq(0.001,0.5,length.out=16)),#),
+                       limits=c(-1.1,0.5), na.value = "white",
+                       labels=c("NS","","-0.5", rep("",8),-0.2,rep("",6),"0",
+                                rep("",6),"0.2",rep("",8),"0.5")) + 
+  coord_fixed(ratio=1)+
+  geom_text(aes(x, y, label=labt), data=cospvars,
+            color = "black", size=2.5, 
+            family = "sans",hjust=0) +
+  xlab(NULL)+ylab(NULL) +
+  guides(colour=FALSE, alpha=FALSE,
+         fill= guide_colorbar(ticks = FALSE, title="Codispersion coefficient",label=T, raster=F,
+                              barwidth=15, barheight = 0.5, title.hjust=-3, title.vjust=1.25)) +
+  theme(
+    panel.grid.minor = element_blank(),
+    axis.text = element_text(family = "sans", size=7), 
+    axis.text.x = element_text(family = "sans", size=7 ,margin = margin(t = 0)),
+    axis.title.x = element_text(family = "sans",margin = margin(t = 0), vjust=-0.2, hjust=0.1, size=10),
+    axis.title.y = element_text(family = "sans",size=10), 
+    axis.line.x = element_line(colour = "black"),
+    axis.line.y = element_line(colour = "black"),
+    strip.text.x = element_text(family = "sans", size=8, face="bold"),
+    strip.text.y = element_text(family = "sans", size=8),
+    legend.key = element_rect(fill = "transparent", colour = "transparent"),
+    legend.text = element_text(family = "sans"), 
+    legend.background = element_rect(fill = "transparent", colour = "transparent"), #"white"),
+    legend.position = "bottom",
+    panel.background = element_rect(fill="transparent",colour=NA) 
+  )
+
+```
+```{r Fig3 codispersion plot, echo=TRUE}
+g1
+```
+

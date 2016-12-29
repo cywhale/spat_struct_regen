@@ -18,6 +18,11 @@ data(compo_us_sp09)
 ## download.file(URL,"rdata"); load("rdata")
 load(url("https://github.com/cywhale/spat_struct_regen/raw/master/dataset/tmp_biofac_us.RData"))
 
+if (!file.exists("NanhsiDT_miscfunc01.R")) {
+  download.file("https://raw.githubusercontent.com/cywhale/spat_struct_regen/master/code/NanhsiDT_miscfunc01.R",  "NanhsiDT_miscfunc01.R")
+}
+source("NanhsiDT_miscfunc01.R")
+
 xres <- compo_us_sp09[-which(substr(tag,1,1)=="t" | (substr(tag,1,1)=="u" & lifeform=="T")),]
 xsdl <- compo_us_sp09[substr(tag,1,1)=="t",]
 
