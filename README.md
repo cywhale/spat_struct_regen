@@ -8,7 +8,7 @@
 
 1. Location: Nanhsi forest dynamics plot (FDP), with an area of 8.37 ha and elevations ranging from 1,960 to 2,060 m (Fig. 1). The plot is located in a bio-reserve of the Yushan National Park, mid-southern Taiwan (120°54' 17" E, 23°27' 32" N). 
 
-2. Climate: characterized by a daily regular cloud immersion and seasonal precipitation. Typhoons and accompanying southwesterly winds can cause extremely heavy rainfall. The mean annual rainfall was about 3,044 mm (during 1998-2009), and 77% of the precipitation occurred from May to September. The mean annul temperature was 11.5 °C (1998-2009), with a January mean of 6.7°C and July mean of 14.9°C. 
+2. Climate: characterized by a daily regular cloud immersion and seasonal precipitation. Typhoons and accompanying southwesterly winds can cause extremely heavy rainfall here.
 
 **Forest vegetation**
 
@@ -44,6 +44,7 @@
 <a href="docs/04_Fig4_community_diff_patch.nb.html">Comparisons of seedling density and Hill’s N1 diversity index among regeneration patches (Fig. 4)</a> 
 
 <a href="docs/Fig4.png">Fig. 4</a> 
-95% confidence intervals generated from null model of torus permutation (upper part) and complete randomization (lower part)  
+
+> 95% confidence intervals generated from null model of torus permutation (upper part) and complete randomization (lower part)  
 
 
