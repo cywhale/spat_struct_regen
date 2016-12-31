@@ -12,6 +12,7 @@ library(magrittr)
 library(vegan) #### Hellinger Transform compostion data before analyses of PCNM-RDA 
 library(packfor) ## forward selection
 library(NanhsiDT) # Functions and datasets used in Nanhis Forest Dynamics Plot.
+## Download from: https://github.com/cywhale/spat_struct_regen/raw/master/NanhsiDT/NanhsiDT_0.2.2.tar.gz
 
 ## Download used functions of R cod from github in your current directory, or load from your local dir if alread downolad
 download.file("https://raw.githubusercontent.com/cywhale/spat_struct_regen/master/code/NanhsiDT_miscfunc01.R", "NanhsiDT_miscfunc01.R")
