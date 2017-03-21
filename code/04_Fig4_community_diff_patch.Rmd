@@ -71,7 +71,7 @@ print(format(tt, "%Y%m%d %H:%M:%S"))
 
 ## Note: time-consuming steps may take hours
 ## if no need for re-run, just load intermediate results from github (get R object "dxp"", in the following codes)
-## load(url("https://github.com/cywhale/spat_struct_regen/raw/master/dataset/tmp_biofac_us.RData"))
+## load(url("https://github.com/cywhale/spat_struct_regen/raw/master/dataset/tmp_patch_permutation.RData"))
 
 ## Parallel version
 
