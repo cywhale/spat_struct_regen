@@ -1,8 +1,11 @@
 # Seedling and seedrain survey in Nanhsi Forest Dynamics Plot, Taiwan
 ## Reproducible research in understory-plant spatially structured seedling assemblages in tree regeneration
-* Title: "Local neighborhood communities in understory play a critical role affecting regeneration niches and subsequent community assembly in a montane cloud forest"
+* Title: "Local neighborhood communities in the understory play a critical role by affecting regeneration niches and subsequent community assembly in a montane cloud forest"
 * Authors: Chi-Yu Weng (cywhale)
-* Status: (not published yet)
+* Status: doi:10.1007/s11284-017-1475-y Ecological Research
+web: https://link.springer.com/…/10.1007/s11284-01…/fulltext.html
+pdf https://link.springer.com/…/p…/10.1007/s11284-017-1475-y.pdf
+線上唯讀版 https://goo.gl/kd2YGq
 
 **Study area**
 
