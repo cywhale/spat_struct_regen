@@ -3,8 +3,8 @@
 * Title: "Local neighborhood communities in the understory play a critical role by affecting regeneration niches and subsequent community assembly in a montane cloud forest"
 * Authors: Chi-Yu Weng (cywhale)
 * Status: doi:10.1007/s11284-017-1475-y Ecological Research
-web: https://link.springer.com/…/10.1007/s11284-01…/fulltext.html
-pdf https://link.springer.com/…/p…/10.1007/s11284-017-1475-y.pdf
+web: https://link.springer.com/article/10.1007/s11284-017-1475-y
+pdf https://link.springer.com/content/pdf/10.1007/s11284-017-1475-y.pdf
 線上唯讀版 https://goo.gl/kd2YGq
 
 **Study area**
