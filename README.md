@@ -5,9 +5,10 @@
 * Status: doi:10.1007/s11284-017-1475-y Ecological Research
     - <a href="https://link.springer.com/article/10.1007/s11284-017-1475-y/fulltext.html" target="_blank">Article link</a>
     - 線上唯讀版 <a href="https://goo.gl/kd2YGq" target="_blank">Read it Online</a>
-    
-<br>
-> "Weng et al. (2017) examined a weak association between seedling distribution and environmental factors in a montane cloud forest of Taiwan. They showed a stronger link to habitat association of seedling assemblages using the spatial structure of understory plants. Such plants covary with seedlings and shape seedlings in specific regeneration patches. The authors suggested that fine-scale heterogeneity produced by neighborhood bio-interactions in the understory is important in regeneration niches. "  from comments in <a href="https://link.springer.com/article/10.1007%2Fs11284-017-1520-x" target="blank">*Establishment of an ecological research network involving Taiwan and Japan: developing a better understanding of ecological phenomena unique to East Asia*</a>
+
+
+* 
+    > "Weng et al. (2017) examined a weak association between seedling distribution and environmental factors in a montane cloud forest of Taiwan. They showed a stronger link to habitat association of seedling assemblages using the spatial structure of understory plants. Such plants covary with seedlings and shape seedlings in specific regeneration patches. The authors suggested that fine-scale heterogeneity produced by neighborhood bio-interactions in the understory is important in regeneration niches. "  from comments in <a href="https://link.springer.com/article/10.1007%2Fs11284-017-1520-x" target="blank">*Establishment of an ecological research network involving Taiwan and Japan: developing a better understanding of ecological phenomena unique to East Asia*</a>
 <br><br>
 
 
